@@ -3,20 +3,34 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: AI Trading Bot API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: brokers
+    description: Broker account connections
+  - name: strategies
+    description: Trading strategy configuration
+  - name: trades
+    description: Trade history and execution
+  - name: positions
+    description: Current open positions
+  - name: bot
+    description: Bot control and status
+  - name: reports
+    description: Performance reports
+  - name: dashboard
+    description: Dashboard summary data
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +38,503 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Broker Connections ────────────────────────────────────────────
+  /brokers:
+    get:
+      operationId: listBrokers
+      tags: [brokers]
+      summary: List all broker connections
+      responses:
+        "200":
+          description: List of broker connections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BrokerConnection"
+    post:
+      operationId: createBroker
+      tags: [brokers]
+      summary: Add a broker connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBrokerBody"
+      responses:
+        "201":
+          description: Broker connection created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerConnection"
+
+  /brokers/{id}:
+    get:
+      operationId: getBroker
+      tags: [brokers]
+      summary: Get a broker connection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Broker connection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerConnection"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateBroker
+      tags: [brokers]
+      summary: Update broker credentials or settings
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBrokerBody"
+      responses:
+        "200":
+          description: Updated broker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerConnection"
+    delete:
+      operationId: deleteBroker
+      tags: [brokers]
+      summary: Remove a broker connection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /brokers/{id}/test:
+    post:
+      operationId: testBrokerConnection
+      tags: [brokers]
+      summary: Test broker API connection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+
+  # ── Trading Strategies ────────────────────────────────────────────
+  /strategies:
+    get:
+      operationId: listStrategies
+      tags: [strategies]
+      summary: List all trading strategies
+      responses:
+        "200":
+          description: List of strategies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Strategy"
+    post:
+      operationId: createStrategy
+      tags: [strategies]
+      summary: Create a new trading strategy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStrategyBody"
+      responses:
+        "201":
+          description: Created strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+
+  /strategies/{id}:
+    get:
+      operationId: getStrategy
+      tags: [strategies]
+      summary: Get a strategy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateStrategy
+      tags: [strategies]
+      summary: Update a strategy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStrategyBody"
+      responses:
+        "200":
+          description: Updated strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+    delete:
+      operationId: deleteStrategy
+      tags: [strategies]
+      summary: Delete a strategy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Bot Control ───────────────────────────────────────────────────
+  /bot/status:
+    get:
+      operationId: getBotStatus
+      tags: [bot]
+      summary: Get bot running status
+      responses:
+        "200":
+          description: Bot status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /bot/start:
+    post:
+      operationId: startBot
+      tags: [bot]
+      summary: Start the trading bot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartBotBody"
+      responses:
+        "200":
+          description: Bot started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /bot/stop:
+    post:
+      operationId: stopBot
+      tags: [bot]
+      summary: Stop the trading bot
+      responses:
+        "200":
+          description: Bot stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /bot/logs:
+    get:
+      operationId: getBotLogs
+      tags: [bot]
+      summary: Get recent bot activity logs
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Bot logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BotLog"
+
+  # ── Positions ─────────────────────────────────────────────────────
+  /positions:
+    get:
+      operationId: listPositions
+      tags: [positions]
+      summary: List all open positions
+      responses:
+        "200":
+          description: Open positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Position"
+
+  /positions/summary:
+    get:
+      operationId: getPositionsSummary
+      tags: [positions]
+      summary: Get positions summary (totals, P&L)
+      responses:
+        "200":
+          description: Positions summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PositionsSummary"
+
+  # ── Trades ────────────────────────────────────────────────────────
+  /trades:
+    get:
+      operationId: listTrades
+      tags: [trades]
+      summary: List trade history
+      parameters:
+        - name: brokerId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: strategyId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: symbol
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Trade history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trade"
+
+  /trades/{id}:
+    get:
+      operationId: getTrade
+      tags: [trades]
+      summary: Get a single trade
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Trade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trade"
+        "404":
+          description: Not found
+
+  # ── Reports ───────────────────────────────────────────────────────
+  /reports/performance:
+    get:
+      operationId: getPerformanceReport
+      tags: [reports]
+      summary: Get performance report for a period
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, quarterly, annually]
+        - name: brokerId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: strategyId
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Performance report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerformanceReport"
+
+  /reports/pnl-chart:
+    get:
+      operationId: getPnlChart
+      tags: [reports]
+      summary: Get P&L chart data points
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, quarterly, annually]
+        - name: brokerId
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: P&L time series
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PnlDataPoint"
+
+  /reports/win-rate:
+    get:
+      operationId: getWinRateStats
+      tags: [reports]
+      summary: Get win/loss statistics
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, quarterly, annually]
+      responses:
+        "200":
+          description: Win rate stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WinRateStats"
+
+  /reports/top-symbols:
+    get:
+      operationId: getTopSymbols
+      tags: [reports]
+      summary: Get best and worst performing symbols
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, quarterly, annually]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Top performing symbols
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SymbolPerformance"
+
+  # ── Dashboard ─────────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard overview stats
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent trades and bot events
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Recent activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +542,506 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    # ── Broker ──────────────────────────────────────────────────────
+    BrokerConnection:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        brokerType:
+          type: string
+          description: "schwab | robinhood | alpaca | interactive_brokers"
+        status:
+          type: string
+          description: "connected | disconnected | error"
+        accountId:
+          type: ["string", "null"]
+        accountValue:
+          type: ["number", "null"]
+        buyingPower:
+          type: ["number", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, name, brokerType, status, isActive, createdAt, updatedAt]
+
+    CreateBrokerBody:
+      type: object
+      properties:
+        name:
+          type: string
+        brokerType:
+          type: string
+        apiKey:
+          type: ["string", "null"]
+        apiSecret:
+          type: ["string", "null"]
+        accessToken:
+          type: ["string", "null"]
+        refreshToken:
+          type: ["string", "null"]
+        accountId:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+      required: [name, brokerType]
+
+    UpdateBrokerBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        apiKey:
+          type: ["string", "null"]
+        apiSecret:
+          type: ["string", "null"]
+        accessToken:
+          type: ["string", "null"]
+        refreshToken:
+          type: ["string", "null"]
+        accountId:
+          type: ["string", "null"]
+        isActive:
+          type: ["boolean", "null"]
+
+    ConnectionTestResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        accountId:
+          type: ["string", "null"]
+        accountValue:
+          type: ["number", "null"]
+      required: [success, message]
+
+    # ── Strategy ────────────────────────────────────────────────────
+    Strategy:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        brokerId:
+          type: integer
+        assetType:
+          type: string
+          description: "stocks | options | crypto | etf"
+        symbols:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        maxPositionSize:
+          type: number
+          description: "Max $ per position"
+        maxDailyLoss:
+          type: number
+          description: "Max daily loss in $"
+        stopLossPercent:
+          type: number
+          description: "Stop loss as % from entry"
+        takeProfitPercent:
+          type: number
+          description: "Take profit as % from entry"
+        aiEnabled:
+          type: boolean
+        aiModel:
+          type: ["string", "null"]
+        aiSignalThreshold:
+          type: number
+          description: "Minimum AI confidence 0-1"
+        rsiOverbought:
+          type: ["number", "null"]
+        rsiOversold:
+          type: ["number", "null"]
+        maFastPeriod:
+          type: ["integer", "null"]
+        maSlowPeriod:
+          type: ["integer", "null"]
+        tradeCount:
+          type: integer
+        winRate:
+          type: ["number", "null"]
+        totalPnl:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, name, brokerId, assetType, symbols, isActive, maxPositionSize, maxDailyLoss, stopLossPercent, takeProfitPercent, aiEnabled, aiSignalThreshold, tradeCount, createdAt, updatedAt]
+
+    CreateStrategyBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        brokerId:
+          type: integer
+        assetType:
+          type: string
+        symbols:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        maxPositionSize:
+          type: number
+        maxDailyLoss:
+          type: number
+        stopLossPercent:
+          type: number
+        takeProfitPercent:
+          type: number
+        aiEnabled:
+          type: boolean
+        aiModel:
+          type: ["string", "null"]
+        aiSignalThreshold:
+          type: number
+        rsiOverbought:
+          type: ["number", "null"]
+        rsiOversold:
+          type: ["number", "null"]
+        maFastPeriod:
+          type: ["integer", "null"]
+        maSlowPeriod:
+          type: ["integer", "null"]
+      required: [name, brokerId, assetType, symbols, maxPositionSize, maxDailyLoss, stopLossPercent, takeProfitPercent, aiSignalThreshold]
+
+    UpdateStrategyBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        symbols:
+          type: ["array", "null"]
+          items:
+            type: string
+        isActive:
+          type: ["boolean", "null"]
+        maxPositionSize:
+          type: ["number", "null"]
+        maxDailyLoss:
+          type: ["number", "null"]
+        stopLossPercent:
+          type: ["number", "null"]
+        takeProfitPercent:
+          type: ["number", "null"]
+        aiEnabled:
+          type: ["boolean", "null"]
+        aiSignalThreshold:
+          type: ["number", "null"]
+        rsiOverbought:
+          type: ["number", "null"]
+        rsiOversold:
+          type: ["number", "null"]
+        maFastPeriod:
+          type: ["integer", "null"]
+        maSlowPeriod:
+          type: ["integer", "null"]
+
+    # ── Bot ─────────────────────────────────────────────────────────
+    BotStatus:
+      type: object
+      properties:
+        isRunning:
+          type: boolean
+        startedAt:
+          type: ["string", "null"]
+        activeStrategyId:
+          type: ["integer", "null"]
+        activeBrokerId:
+          type: ["integer", "null"]
+        tradesExecutedToday:
+          type: integer
+        dailyPnl:
+          type: number
+        lastHeartbeat:
+          type: ["string", "null"]
+      required: [isRunning, tradesExecutedToday, dailyPnl]
+
+    StartBotBody:
+      type: object
+      properties:
+        strategyId:
+          type: integer
+        brokerId:
+          type: integer
+      required: [strategyId, brokerId]
+
+    BotLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        level:
+          type: string
+          description: "info | warn | error | trade"
+        message:
+          type: string
+        symbol:
+          type: ["string", "null"]
+        action:
+          type: ["string", "null"]
+        details:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required: [id, level, message, createdAt]
+
+    # ── Positions ───────────────────────────────────────────────────
+    Position:
+      type: object
+      properties:
+        id:
+          type: integer
+        brokerId:
+          type: integer
+        brokerName:
+          type: string
+        symbol:
+          type: string
+        assetType:
+          type: string
+        side:
+          type: string
+          description: "long | short"
+        quantity:
+          type: number
+        entryPrice:
+          type: number
+        currentPrice:
+          type: ["number", "null"]
+        marketValue:
+          type: ["number", "null"]
+        unrealizedPnl:
+          type: ["number", "null"]
+        unrealizedPnlPercent:
+          type: ["number", "null"]
+        strategyId:
+          type: ["integer", "null"]
+        openedAt:
+          type: string
+      required: [id, brokerId, brokerName, symbol, assetType, side, quantity, entryPrice, openedAt]
+
+    PositionsSummary:
+      type: object
+      properties:
+        totalPositions:
+          type: integer
+        totalMarketValue:
+          type: number
+        totalUnrealizedPnl:
+          type: number
+        totalUnrealizedPnlPercent:
+          type: number
+        longPositions:
+          type: integer
+        shortPositions:
+          type: integer
+      required: [totalPositions, totalMarketValue, totalUnrealizedPnl, totalUnrealizedPnlPercent, longPositions, shortPositions]
+
+    # ── Trades ──────────────────────────────────────────────────────
+    Trade:
+      type: object
+      properties:
+        id:
+          type: integer
+        brokerId:
+          type: integer
+        brokerName:
+          type: string
+        strategyId:
+          type: ["integer", "null"]
+        strategyName:
+          type: ["string", "null"]
+        symbol:
+          type: string
+        assetType:
+          type: string
+        side:
+          type: string
+          description: "buy | sell | buy_to_open | sell_to_close"
+        quantity:
+          type: number
+        entryPrice:
+          type: number
+        exitPrice:
+          type: ["number", "null"]
+        realizedPnl:
+          type: ["number", "null"]
+        realizedPnlPercent:
+          type: ["number", "null"]
+        status:
+          type: string
+          description: "open | closed | cancelled"
+        aiSignal:
+          type: ["string", "null"]
+          description: "buy | sell | hold"
+        aiConfidence:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+        openedAt:
+          type: string
+        closedAt:
+          type: ["string", "null"]
+      required: [id, brokerId, brokerName, symbol, assetType, side, quantity, entryPrice, status, openedAt]
+
+    # ── Reports ─────────────────────────────────────────────────────
+    PerformanceReport:
+      type: object
+      properties:
+        period:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        totalTrades:
+          type: integer
+        winningTrades:
+          type: integer
+        losingTrades:
+          type: integer
+        winRate:
+          type: number
+        totalPnl:
+          type: number
+        totalPnlPercent:
+          type: number
+        avgWin:
+          type: number
+        avgLoss:
+          type: number
+        profitFactor:
+          type: number
+        maxDrawdown:
+          type: number
+        sharpeRatio:
+          type: ["number", "null"]
+        bestTrade:
+          type: ["number", "null"]
+        worstTrade:
+          type: ["number", "null"]
+      required: [period, startDate, endDate, totalTrades, winningTrades, losingTrades, winRate, totalPnl, totalPnlPercent, avgWin, avgLoss, profitFactor, maxDrawdown]
+
+    PnlDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        pnl:
+          type: number
+        cumulativePnl:
+          type: number
+        tradeCount:
+          type: integer
+      required: [date, pnl, cumulativePnl, tradeCount]
+
+    WinRateStats:
+      type: object
+      properties:
+        winRate:
+          type: number
+        wins:
+          type: integer
+        losses:
+          type: integer
+        breakeven:
+          type: integer
+        avgWinAmount:
+          type: number
+        avgLossAmount:
+          type: number
+        largestWin:
+          type: number
+        largestLoss:
+          type: number
+      required: [winRate, wins, losses, breakeven, avgWinAmount, avgLossAmount, largestWin, largestLoss]
+
+    SymbolPerformance:
+      type: object
+      properties:
+        symbol:
+          type: string
+        totalPnl:
+          type: number
+        totalPnlPercent:
+          type: number
+        tradeCount:
+          type: integer
+        winRate:
+          type: number
+      required: [symbol, totalPnl, totalPnlPercent, tradeCount, winRate]
+
+    # ── Dashboard ───────────────────────────────────────────────────
+    DashboardSummary:
+      type: object
+      properties:
+        totalAccountValue:
+          type: number
+        totalBuyingPower:
+          type: number
+        dailyPnl:
+          type: number
+        dailyPnlPercent:
+          type: number
+        weeklyPnl:
+          type: number
+        monthlyPnl:
+          type: number
+        totalOpenPositions:
+          type: integer
+        totalUnrealizedPnl:
+          type: number
+        activeBrokers:
+          type: integer
+        activeStrategies:
+          type: integer
+        botRunning:
+          type: boolean
+        tradesExecutedToday:
+          type: integer
+        winRateAllTime:
+          type: number
+      required: [totalAccountValue, totalBuyingPower, dailyPnl, dailyPnlPercent, weeklyPnl, monthlyPnl, totalOpenPositions, totalUnrealizedPnl, activeBrokers, activeStrategies, botRunning, tradesExecutedToday, winRateAllTime]
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          description: "trade_opened | trade_closed | bot_started | bot_stopped | signal_generated | error"
+        title:
+          type: string
+        description:
+          type: string
+        symbol:
+          type: ["string", "null"]
+        pnl:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+      required: [id, type, title, description, createdAt]
