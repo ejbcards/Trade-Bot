@@ -267,6 +267,156 @@ export interface Trade {
   closedAt?: string | null;
 }
 
+export interface DecisionRule {
+  id: number;
+  strategyId: number;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  priority: number;
+  isActive: boolean;
+  /** @nullable */
+  rsiMin?: number | null;
+  /** @nullable */
+  rsiMax?: number | null;
+  /**
+   * bullish_cross | bearish_cross | above_fast | below_slow | any
+   * @nullable
+   */
+  maCondition?: string | null;
+  /**
+   * high | normal | low | any
+   * @nullable
+   */
+  volumeCondition?: string | null;
+  /**
+   * uptrend | downtrend | sideways | any
+   * @nullable
+   */
+  trendCondition?: string | null;
+  /**
+   * buy | sell | hold | any
+   * @nullable
+   */
+  aiSignal?: string | null;
+  /** @nullable */
+  aiConfidenceMin?: number | null;
+  /** @nullable */
+  priceChangeMin?: number | null;
+  /** @nullable */
+  priceChangeMax?: number | null;
+  /** buy | sell | hold */
+  action: string;
+  quantityMultiplier: number;
+  /** @nullable */
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDecisionRuleBody {
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  priority?: number;
+  isActive?: boolean;
+  /** @nullable */
+  rsiMin?: number | null;
+  /** @nullable */
+  rsiMax?: number | null;
+  /** @nullable */
+  maCondition?: string | null;
+  /** @nullable */
+  volumeCondition?: string | null;
+  /** @nullable */
+  trendCondition?: string | null;
+  /** @nullable */
+  aiSignal?: string | null;
+  /** @nullable */
+  aiConfidenceMin?: number | null;
+  /** @nullable */
+  priceChangeMin?: number | null;
+  /** @nullable */
+  priceChangeMax?: number | null;
+  action: string;
+  quantityMultiplier?: number;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface UpdateDecisionRuleBody {
+  name?: string;
+  /** @nullable */
+  description?: string | null;
+  priority?: number;
+  isActive?: boolean;
+  /** @nullable */
+  rsiMin?: number | null;
+  /** @nullable */
+  rsiMax?: number | null;
+  /** @nullable */
+  maCondition?: string | null;
+  /** @nullable */
+  volumeCondition?: string | null;
+  /** @nullable */
+  trendCondition?: string | null;
+  /** @nullable */
+  aiSignal?: string | null;
+  /** @nullable */
+  aiConfidenceMin?: number | null;
+  /** @nullable */
+  priceChangeMin?: number | null;
+  /** @nullable */
+  priceChangeMax?: number | null;
+  action?: string;
+  quantityMultiplier?: number;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface MarketSnapshot {
+  symbol: string;
+  /** @nullable */
+  rsi?: number | null;
+  /**
+   * bullish_cross | bearish_cross | above_fast | below_slow
+   * @nullable
+   */
+  maCondition?: string | null;
+  /**
+   * high | normal | low
+   * @nullable
+   */
+  volumeCondition?: string | null;
+  /**
+   * uptrend | downtrend | sideways
+   * @nullable
+   */
+  trendCondition?: string | null;
+  /**
+   * buy | sell | hold
+   * @nullable
+   */
+  aiSignal?: string | null;
+  /** @nullable */
+  aiConfidence?: number | null;
+  /** @nullable */
+  priceChangePercent?: number | null;
+}
+
+export interface EvaluationResult {
+  symbol: string;
+  /** buy | sell | hold */
+  action: string;
+  quantityMultiplier: number;
+  /** @nullable */
+  matchedRuleId?: number | null;
+  /** @nullable */
+  matchedRuleName?: string | null;
+  reason: string;
+  rulesEvaluated: number;
+}
+
 export interface PerformanceReport {
   period: string;
   startDate: string;

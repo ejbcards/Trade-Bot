@@ -266,6 +266,175 @@ export const DeleteStrategyParams = zod.object({
 });
 
 /**
+ * @summary List decision rules for a strategy
+ */
+export const ListDecisionRulesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListDecisionRulesResponseItem = zod.object({
+  id: zod.number(),
+  strategyId: zod.number(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  priority: zod.number(),
+  isActive: zod.boolean(),
+  rsiMin: zod.number().nullish(),
+  rsiMax: zod.number().nullish(),
+  maCondition: zod
+    .string()
+    .nullish()
+    .describe("bullish_cross | bearish_cross | above_fast | below_slow | any"),
+  volumeCondition: zod.string().nullish().describe("high | normal | low | any"),
+  trendCondition: zod
+    .string()
+    .nullish()
+    .describe("uptrend | downtrend | sideways | any"),
+  aiSignal: zod.string().nullish().describe("buy | sell | hold | any"),
+  aiConfidenceMin: zod.number().nullish(),
+  priceChangeMin: zod.number().nullish(),
+  priceChangeMax: zod.number().nullish(),
+  action: zod.string().describe("buy | sell | hold"),
+  quantityMultiplier: zod.number(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListDecisionRulesResponse = zod.array(
+  ListDecisionRulesResponseItem,
+);
+
+/**
+ * @summary Create a decision rule for a strategy
+ */
+export const CreateDecisionRuleParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const createDecisionRuleBodyPriorityDefault = 0;
+export const createDecisionRuleBodyIsActiveDefault = true;
+export const createDecisionRuleBodyQuantityMultiplierDefault = 1;
+
+export const CreateDecisionRuleBody = zod.object({
+  name: zod.string(),
+  description: zod.string().nullish(),
+  priority: zod.number().default(createDecisionRuleBodyPriorityDefault),
+  isActive: zod.boolean().default(createDecisionRuleBodyIsActiveDefault),
+  rsiMin: zod.number().nullish(),
+  rsiMax: zod.number().nullish(),
+  maCondition: zod.string().nullish(),
+  volumeCondition: zod.string().nullish(),
+  trendCondition: zod.string().nullish(),
+  aiSignal: zod.string().nullish(),
+  aiConfidenceMin: zod.number().nullish(),
+  priceChangeMin: zod.number().nullish(),
+  priceChangeMax: zod.number().nullish(),
+  action: zod.string(),
+  quantityMultiplier: zod
+    .number()
+    .default(createDecisionRuleBodyQuantityMultiplierDefault),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Update a decision rule
+ */
+export const UpdateDecisionRuleParams = zod.object({
+  id: zod.coerce.number(),
+  ruleId: zod.coerce.number(),
+});
+
+export const UpdateDecisionRuleBody = zod.object({
+  name: zod.string().optional(),
+  description: zod.string().nullish(),
+  priority: zod.number().optional(),
+  isActive: zod.boolean().optional(),
+  rsiMin: zod.number().nullish(),
+  rsiMax: zod.number().nullish(),
+  maCondition: zod.string().nullish(),
+  volumeCondition: zod.string().nullish(),
+  trendCondition: zod.string().nullish(),
+  aiSignal: zod.string().nullish(),
+  aiConfidenceMin: zod.number().nullish(),
+  priceChangeMin: zod.number().nullish(),
+  priceChangeMax: zod.number().nullish(),
+  action: zod.string().optional(),
+  quantityMultiplier: zod.number().optional(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateDecisionRuleResponse = zod.object({
+  id: zod.number(),
+  strategyId: zod.number(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  priority: zod.number(),
+  isActive: zod.boolean(),
+  rsiMin: zod.number().nullish(),
+  rsiMax: zod.number().nullish(),
+  maCondition: zod
+    .string()
+    .nullish()
+    .describe("bullish_cross | bearish_cross | above_fast | below_slow | any"),
+  volumeCondition: zod.string().nullish().describe("high | normal | low | any"),
+  trendCondition: zod
+    .string()
+    .nullish()
+    .describe("uptrend | downtrend | sideways | any"),
+  aiSignal: zod.string().nullish().describe("buy | sell | hold | any"),
+  aiConfidenceMin: zod.number().nullish(),
+  priceChangeMin: zod.number().nullish(),
+  priceChangeMax: zod.number().nullish(),
+  action: zod.string().describe("buy | sell | hold"),
+  quantityMultiplier: zod.number(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Delete a decision rule
+ */
+export const DeleteDecisionRuleParams = zod.object({
+  id: zod.coerce.number(),
+  ruleId: zod.coerce.number(),
+});
+
+/**
+ * @summary Test decision table with a market snapshot
+ */
+export const EvaluateStrategyParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const EvaluateStrategyBody = zod.object({
+  symbol: zod.string(),
+  rsi: zod.number().nullish(),
+  maCondition: zod
+    .string()
+    .nullish()
+    .describe("bullish_cross | bearish_cross | above_fast | below_slow"),
+  volumeCondition: zod.string().nullish().describe("high | normal | low"),
+  trendCondition: zod
+    .string()
+    .nullish()
+    .describe("uptrend | downtrend | sideways"),
+  aiSignal: zod.string().nullish().describe("buy | sell | hold"),
+  aiConfidence: zod.number().nullish(),
+  priceChangePercent: zod.number().nullish(),
+});
+
+export const EvaluateStrategyResponse = zod.object({
+  symbol: zod.string(),
+  action: zod.string().describe("buy | sell | hold"),
+  quantityMultiplier: zod.number(),
+  matchedRuleId: zod.number().nullish(),
+  matchedRuleName: zod.string().nullish(),
+  reason: zod.string(),
+  rulesEvaluated: zod.number(),
+});
+
+/**
  * @summary Get bot running status
  */
 export const GetBotStatusResponse = zod.object({

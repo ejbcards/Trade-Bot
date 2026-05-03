@@ -23,8 +23,11 @@ import type {
   BrokerConnection,
   ConnectionTestResult,
   CreateBrokerBody,
+  CreateDecisionRuleBody,
   CreateStrategyBody,
   DashboardSummary,
+  DecisionRule,
+  EvaluationResult,
   GetBotLogsParams,
   GetPerformanceReportParams,
   GetPnlChartParams,
@@ -33,6 +36,7 @@ import type {
   GetWinRateStatsParams,
   HealthStatus,
   ListTradesParams,
+  MarketSnapshot,
   PerformanceReport,
   PnlDataPoint,
   Position,
@@ -42,6 +46,7 @@ import type {
   SymbolPerformance,
   Trade,
   UpdateBrokerBody,
+  UpdateDecisionRuleBody,
   UpdateStrategyBody,
   WinRateStats,
 } from "./api.schemas";
@@ -1048,6 +1053,440 @@ export const useDeleteStrategy = <
   TContext
 > => {
   return useMutation(getDeleteStrategyMutationOptions(options));
+};
+
+/**
+ * @summary List decision rules for a strategy
+ */
+export const getListDecisionRulesUrl = (id: number) => {
+  return `/api/strategies/${id}/decision-rules`;
+};
+
+export const listDecisionRules = async (
+  id: number,
+  options?: RequestInit,
+): Promise<DecisionRule[]> => {
+  return customFetch<DecisionRule[]>(getListDecisionRulesUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListDecisionRulesQueryKey = (id: number) => {
+  return [`/api/strategies/${id}/decision-rules`] as const;
+};
+
+export const getListDecisionRulesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listDecisionRules>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listDecisionRules>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListDecisionRulesQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listDecisionRules>>
+  > = ({ signal }) => listDecisionRules(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listDecisionRules>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListDecisionRulesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listDecisionRules>>
+>;
+export type ListDecisionRulesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List decision rules for a strategy
+ */
+
+export function useListDecisionRules<
+  TData = Awaited<ReturnType<typeof listDecisionRules>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listDecisionRules>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListDecisionRulesQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a decision rule for a strategy
+ */
+export const getCreateDecisionRuleUrl = (id: number) => {
+  return `/api/strategies/${id}/decision-rules`;
+};
+
+export const createDecisionRule = async (
+  id: number,
+  createDecisionRuleBody: CreateDecisionRuleBody,
+  options?: RequestInit,
+): Promise<DecisionRule> => {
+  return customFetch<DecisionRule>(getCreateDecisionRuleUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createDecisionRuleBody),
+  });
+};
+
+export const getCreateDecisionRuleMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDecisionRule>>,
+    TError,
+    { id: number; data: BodyType<CreateDecisionRuleBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createDecisionRule>>,
+  TError,
+  { id: number; data: BodyType<CreateDecisionRuleBody> },
+  TContext
+> => {
+  const mutationKey = ["createDecisionRule"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createDecisionRule>>,
+    { id: number; data: BodyType<CreateDecisionRuleBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createDecisionRule(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateDecisionRuleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createDecisionRule>>
+>;
+export type CreateDecisionRuleMutationBody = BodyType<CreateDecisionRuleBody>;
+export type CreateDecisionRuleMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a decision rule for a strategy
+ */
+export const useCreateDecisionRule = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createDecisionRule>>,
+    TError,
+    { id: number; data: BodyType<CreateDecisionRuleBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createDecisionRule>>,
+  TError,
+  { id: number; data: BodyType<CreateDecisionRuleBody> },
+  TContext
+> => {
+  return useMutation(getCreateDecisionRuleMutationOptions(options));
+};
+
+/**
+ * @summary Update a decision rule
+ */
+export const getUpdateDecisionRuleUrl = (id: number, ruleId: number) => {
+  return `/api/strategies/${id}/decision-rules/${ruleId}`;
+};
+
+export const updateDecisionRule = async (
+  id: number,
+  ruleId: number,
+  updateDecisionRuleBody: UpdateDecisionRuleBody,
+  options?: RequestInit,
+): Promise<DecisionRule> => {
+  return customFetch<DecisionRule>(getUpdateDecisionRuleUrl(id, ruleId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateDecisionRuleBody),
+  });
+};
+
+export const getUpdateDecisionRuleMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateDecisionRule>>,
+    TError,
+    { id: number; ruleId: number; data: BodyType<UpdateDecisionRuleBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateDecisionRule>>,
+  TError,
+  { id: number; ruleId: number; data: BodyType<UpdateDecisionRuleBody> },
+  TContext
+> => {
+  const mutationKey = ["updateDecisionRule"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateDecisionRule>>,
+    { id: number; ruleId: number; data: BodyType<UpdateDecisionRuleBody> }
+  > = (props) => {
+    const { id, ruleId, data } = props ?? {};
+
+    return updateDecisionRule(id, ruleId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateDecisionRuleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateDecisionRule>>
+>;
+export type UpdateDecisionRuleMutationBody = BodyType<UpdateDecisionRuleBody>;
+export type UpdateDecisionRuleMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a decision rule
+ */
+export const useUpdateDecisionRule = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateDecisionRule>>,
+    TError,
+    { id: number; ruleId: number; data: BodyType<UpdateDecisionRuleBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateDecisionRule>>,
+  TError,
+  { id: number; ruleId: number; data: BodyType<UpdateDecisionRuleBody> },
+  TContext
+> => {
+  return useMutation(getUpdateDecisionRuleMutationOptions(options));
+};
+
+/**
+ * @summary Delete a decision rule
+ */
+export const getDeleteDecisionRuleUrl = (id: number, ruleId: number) => {
+  return `/api/strategies/${id}/decision-rules/${ruleId}`;
+};
+
+export const deleteDecisionRule = async (
+  id: number,
+  ruleId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteDecisionRuleUrl(id, ruleId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteDecisionRuleMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteDecisionRule>>,
+    TError,
+    { id: number; ruleId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteDecisionRule>>,
+  TError,
+  { id: number; ruleId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteDecisionRule"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteDecisionRule>>,
+    { id: number; ruleId: number }
+  > = (props) => {
+    const { id, ruleId } = props ?? {};
+
+    return deleteDecisionRule(id, ruleId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteDecisionRuleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteDecisionRule>>
+>;
+
+export type DeleteDecisionRuleMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a decision rule
+ */
+export const useDeleteDecisionRule = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteDecisionRule>>,
+    TError,
+    { id: number; ruleId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteDecisionRule>>,
+  TError,
+  { id: number; ruleId: number },
+  TContext
+> => {
+  return useMutation(getDeleteDecisionRuleMutationOptions(options));
+};
+
+/**
+ * @summary Test decision table with a market snapshot
+ */
+export const getEvaluateStrategyUrl = (id: number) => {
+  return `/api/strategies/${id}/evaluate`;
+};
+
+export const evaluateStrategy = async (
+  id: number,
+  marketSnapshot: MarketSnapshot,
+  options?: RequestInit,
+): Promise<EvaluationResult> => {
+  return customFetch<EvaluationResult>(getEvaluateStrategyUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(marketSnapshot),
+  });
+};
+
+export const getEvaluateStrategyMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof evaluateStrategy>>,
+    TError,
+    { id: number; data: BodyType<MarketSnapshot> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof evaluateStrategy>>,
+  TError,
+  { id: number; data: BodyType<MarketSnapshot> },
+  TContext
+> => {
+  const mutationKey = ["evaluateStrategy"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof evaluateStrategy>>,
+    { id: number; data: BodyType<MarketSnapshot> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return evaluateStrategy(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EvaluateStrategyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof evaluateStrategy>>
+>;
+export type EvaluateStrategyMutationBody = BodyType<MarketSnapshot>;
+export type EvaluateStrategyMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Test decision table with a market snapshot
+ */
+export const useEvaluateStrategy = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof evaluateStrategy>>,
+    TError,
+    { id: number; data: BodyType<MarketSnapshot> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof evaluateStrategy>>,
+  TError,
+  { id: number; data: BodyType<MarketSnapshot> },
+  TContext
+> => {
+  return useMutation(getEvaluateStrategyMutationOptions(options));
 };
 
 /**

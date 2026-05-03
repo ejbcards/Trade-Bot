@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useListStrategies, useCreateStrategy, useDeleteStrategy, useUpdateStrategy, useListBrokers } from "@workspace/api-client-react";
+import { DecisionTableEditor } from "@/components/DecisionTableEditor";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -283,6 +284,10 @@ export default function Strategies() {
                       <span>AI Signal Threshold: <strong className="text-foreground">{Math.round(strategy.aiSignalThreshold * 100)}%</strong></span>
                     </div>
                   )}
+
+                  <div className="border-t pt-4 mt-2">
+                    <DecisionTableEditor strategyId={strategy.id} strategyName={strategy.name} />
+                  </div>
                 </CardContent>
                 <CardFooter className="pt-0 flex gap-2 border-t mt-auto py-3">
                   <Button variant="outline" size="sm" className="flex-1" disabled>

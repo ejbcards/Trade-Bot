@@ -238,6 +238,124 @@ paths:
         "204":
           description: Deleted
 
+  # ── Decision Rules ────────────────────────────────────────────────
+  /strategies/{id}/decision-rules:
+    get:
+      operationId: listDecisionRules
+      tags: [strategies]
+      summary: List decision rules for a strategy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of decision rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DecisionRule"
+    post:
+      operationId: createDecisionRule
+      tags: [strategies]
+      summary: Create a decision rule for a strategy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDecisionRuleBody"
+      responses:
+        "201":
+          description: Created decision rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionRule"
+
+  /strategies/{id}/decision-rules/{ruleId}:
+    patch:
+      operationId: updateDecisionRule
+      tags: [strategies]
+      summary: Update a decision rule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: ruleId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDecisionRuleBody"
+      responses:
+        "200":
+          description: Updated decision rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionRule"
+    delete:
+      operationId: deleteDecisionRule
+      tags: [strategies]
+      summary: Delete a decision rule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: ruleId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /strategies/{id}/evaluate:
+    post:
+      operationId: evaluateStrategy
+      tags: [strategies]
+      summary: Test decision table with a market snapshot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarketSnapshot"
+      responses:
+        "200":
+          description: Evaluation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluationResult"
+
   # ── Bot Control ───────────────────────────────────────────────────
   /bot/status:
     get:
@@ -906,6 +1024,178 @@ components:
         closedAt:
           type: ["string", "null"]
       required: [id, brokerId, brokerName, symbol, assetType, side, quantity, entryPrice, status, openedAt]
+
+    # ── Decision Rules ──────────────────────────────────────────────
+    DecisionRule:
+      type: object
+      properties:
+        id:
+          type: integer
+        strategyId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        priority:
+          type: integer
+        isActive:
+          type: boolean
+        rsiMin:
+          type: ["number", "null"]
+        rsiMax:
+          type: ["number", "null"]
+        maCondition:
+          type: ["string", "null"]
+          description: "bullish_cross | bearish_cross | above_fast | below_slow | any"
+        volumeCondition:
+          type: ["string", "null"]
+          description: "high | normal | low | any"
+        trendCondition:
+          type: ["string", "null"]
+          description: "uptrend | downtrend | sideways | any"
+        aiSignal:
+          type: ["string", "null"]
+          description: "buy | sell | hold | any"
+        aiConfidenceMin:
+          type: ["number", "null"]
+        priceChangeMin:
+          type: ["number", "null"]
+        priceChangeMax:
+          type: ["number", "null"]
+        action:
+          type: string
+          description: "buy | sell | hold"
+        quantityMultiplier:
+          type: number
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, strategyId, name, priority, isActive, action, quantityMultiplier, createdAt, updatedAt]
+
+    CreateDecisionRuleBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        priority:
+          type: integer
+          default: 0
+        isActive:
+          type: boolean
+          default: true
+        rsiMin:
+          type: ["number", "null"]
+        rsiMax:
+          type: ["number", "null"]
+        maCondition:
+          type: ["string", "null"]
+        volumeCondition:
+          type: ["string", "null"]
+        trendCondition:
+          type: ["string", "null"]
+        aiSignal:
+          type: ["string", "null"]
+        aiConfidenceMin:
+          type: ["number", "null"]
+        priceChangeMin:
+          type: ["number", "null"]
+        priceChangeMax:
+          type: ["number", "null"]
+        action:
+          type: string
+        quantityMultiplier:
+          type: number
+          default: 1
+        notes:
+          type: ["string", "null"]
+      required: [name, action]
+
+    UpdateDecisionRuleBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        priority:
+          type: integer
+        isActive:
+          type: boolean
+        rsiMin:
+          type: ["number", "null"]
+        rsiMax:
+          type: ["number", "null"]
+        maCondition:
+          type: ["string", "null"]
+        volumeCondition:
+          type: ["string", "null"]
+        trendCondition:
+          type: ["string", "null"]
+        aiSignal:
+          type: ["string", "null"]
+        aiConfidenceMin:
+          type: ["number", "null"]
+        priceChangeMin:
+          type: ["number", "null"]
+        priceChangeMax:
+          type: ["number", "null"]
+        action:
+          type: string
+        quantityMultiplier:
+          type: number
+        notes:
+          type: ["string", "null"]
+
+    MarketSnapshot:
+      type: object
+      properties:
+        symbol:
+          type: string
+        rsi:
+          type: ["number", "null"]
+        maCondition:
+          type: ["string", "null"]
+          description: "bullish_cross | bearish_cross | above_fast | below_slow"
+        volumeCondition:
+          type: ["string", "null"]
+          description: "high | normal | low"
+        trendCondition:
+          type: ["string", "null"]
+          description: "uptrend | downtrend | sideways"
+        aiSignal:
+          type: ["string", "null"]
+          description: "buy | sell | hold"
+        aiConfidence:
+          type: ["number", "null"]
+        priceChangePercent:
+          type: ["number", "null"]
+      required: [symbol]
+
+    EvaluationResult:
+      type: object
+      properties:
+        symbol:
+          type: string
+        action:
+          type: string
+          description: "buy | sell | hold"
+        quantityMultiplier:
+          type: number
+        matchedRuleId:
+          type: ["integer", "null"]
+        matchedRuleName:
+          type: ["string", "null"]
+        reason:
+          type: string
+        rulesEvaluated:
+          type: integer
+      required: [symbol, action, quantityMultiplier, reason, rulesEvaluated]
 
     # ── Reports ─────────────────────────────────────────────────────
     PerformanceReport:
