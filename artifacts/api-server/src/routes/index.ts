@@ -8,6 +8,7 @@ import positionsRouter from "./positions";
 import botRouter from "./bot";
 import reportsRouter from "./reports";
 import dashboardRouter from "./dashboard";
+import schwabAuthRouter from "./schwabAuth";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(positionsRouter);
 router.use(botRouter);
 router.use(reportsRouter);
 router.use(dashboardRouter);
+router.use(schwabAuthRouter);
 
 export default router;

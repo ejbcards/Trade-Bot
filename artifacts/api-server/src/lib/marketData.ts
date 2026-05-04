@@ -3,7 +3,7 @@ import { logger } from "./logger";
 
 // yahoo-finance2 v3: default export is the class, must be instantiated
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const yahooFinance = new (YahooFinanceClass as any)();
+const yahooFinance = new (YahooFinanceClass as any)({ suppressNotices: ["yahooSurvey"] });
 
 export interface OHLCVBar {
   date: Date;
@@ -25,6 +25,20 @@ export interface MarketDataResult {
   candlestickPattern: string | null;
   timeFrame: string | null;
   volumeIncreaseLevel: "S" | "M" | "L" | null;
+}
+
+export interface OptionsContract {
+  contractSymbol: string;
+  optionType: "call" | "put";
+  strike: number;
+  expiry: Date;
+  lastPrice: number;
+  bid: number;
+  ask: number;
+  midPrice: number;
+  impliedVolatility: number;
+  inTheMoney: boolean;
+  volume: number;
 }
 
 function calculateRSI(closes: number[], period = 14): number | null {
@@ -151,6 +165,97 @@ export async function fetchMarketData(symbol: string): Promise<MarketDataResult 
     };
   } catch (err) {
     logger.warn({ symbol, err }, "Failed to fetch market data for symbol");
+    return null;
+  }
+}
+
+// ─── SPY Options Chain ────────────────────────────────────────────────────
+
+/** Find the contract in a list whose strike is closest to the target price */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findAtmContract(contracts: any[], targetPrice: number): any | null {
+  if (!contracts || contracts.length === 0) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return contracts.reduce((best: any, c: any) => {
+    if (!best) return c;
+    return Math.abs(c.strike - targetPrice) < Math.abs(best.strike - targetPrice) ? c : best;
+  }, null);
+}
+
+/**
+ * Fetches the SPY options chain and returns the best ATM call and put
+ * for the next expiry at least `minDaysOut` calendar days from now.
+ *
+ * Step 1: fetch the base chain (no date) to get all available expirationDates.
+ * Step 2: pick the first expiry that is >= minDaysOut days from today.
+ * Step 3: re-fetch the chain for that specific date to get calls/puts.
+ */
+export async function fetchSpyOptionsChain(currentPrice: number, minDaysOut = 10): Promise<{
+  call: OptionsContract | null;
+  put: OptionsContract | null;
+  expiryDate: Date;
+} | null> {
+  try {
+    // Step 1 — discover available expiry dates
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const base: any = await (yahooFinance.options as any)("SPY");
+    const expirationDates: Date[] = base?.expirationDates ?? [];
+    if (expirationDates.length === 0) {
+      logger.warn("SPY options: no expirationDates returned");
+      return null;
+    }
+
+    // Step 2 — pick first expiry >= minDaysOut days from now
+    const cutoff = new Date(Date.now() + minDaysOut * 24 * 60 * 60 * 1000);
+    const targetDate = expirationDates.find((d) => new Date(d) >= cutoff) ?? expirationDates[expirationDates.length - 1];
+    const expiryDate = new Date(targetDate);
+
+    // Step 3 — fetch the chain for that expiry
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const chain: any = await (yahooFinance.options as any)("SPY", { date: expiryDate });
+    const optionSet = chain?.options?.[0];
+    if (!optionSet) {
+      logger.warn({ expiryDate }, "SPY options: no option set for target expiry");
+      return null;
+    }
+
+    const rawCall = findAtmContract(optionSet.calls ?? [], currentPrice);
+    const rawPut = findAtmContract(optionSet.puts ?? [], currentPrice);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function parseContract(raw: any, type: "call" | "put"): OptionsContract | null {
+      if (!raw) return null;
+      const bid = raw.bid ?? 0;
+      const ask = raw.ask ?? 0;
+      const last = raw.lastPrice ?? 0;
+      const mid = bid && ask ? (bid + ask) / 2 : last;
+      return {
+        contractSymbol: raw.contractSymbol as string,
+        optionType: type,
+        strike: raw.strike as number,
+        expiry: expiryDate,
+        lastPrice: last,
+        bid,
+        ask,
+        midPrice: parseFloat(mid.toFixed(4)),
+        impliedVolatility: raw.impliedVolatility ?? 0,
+        inTheMoney: raw.inTheMoney ?? false,
+        volume: raw.volume ?? 0,
+      };
+    }
+
+    logger.info(
+      { expiryDate: expiryDate.toISOString().slice(0, 10), calls: optionSet.calls?.length ?? 0, puts: optionSet.puts?.length ?? 0 },
+      "SPY options chain fetched",
+    );
+
+    return {
+      call: parseContract(rawCall, "call"),
+      put: parseContract(rawPut, "put"),
+      expiryDate,
+    };
+  } catch (err) {
+    logger.warn({ err }, "Failed to fetch SPY options chain");
     return null;
   }
 }

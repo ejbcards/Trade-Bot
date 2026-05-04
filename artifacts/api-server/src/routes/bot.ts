@@ -2,11 +2,8 @@ import { Router, type IRouter } from "express";
 import { desc, eq } from "drizzle-orm";
 import { db, botStateTable, botLogsTable, activityTable } from "@workspace/db";
 import { StartBotBody, GetBotLogsQueryParams } from "@workspace/api-zod";
-import { refreshSchedule } from "../lib/scheduler";
-import { fetchMarketData } from "../lib/marketData";
-import { ensurePaperBroker, executePaperBuy, executePaperSell, checkStopLossTakeProfit, updatePaperPositionPrices } from "../lib/paperTrading";
-import { evaluateDecisionTable } from "../lib/decisionEngine";
-import { strategiesTable, decisionRulesTable } from "@workspace/db";
+import { refreshSchedule, runTradingCycle } from "../lib/scheduler";
+import { ensurePaperBroker } from "../lib/paperTrading";
 
 const router: IRouter = Router();
 
@@ -15,11 +12,7 @@ async function ensureBotState() {
   if (!state) {
     const [newState] = await db
       .insert(botStateTable)
-      .values({
-        isRunning: false,
-        tradesExecutedToday: 0,
-        dailyPnl: "0",
-      })
+      .values({ isRunning: false, tradesExecutedToday: 0, dailyPnl: "0" })
       .returning();
     return newState;
   }
@@ -64,51 +57,29 @@ router.post("/bot/start", async (req, res): Promise<void> => {
     .where(eq(botStateTable.id, existing.id))
     .returning();
 
-  await db.insert(botLogsTable).values({
-    level: "info",
-    message: "Bot started manually",
-    action: "start",
-  });
-
+  await db.insert(botLogsTable).values({ level: "info", message: "Bot started manually", action: "start" });
   await db.insert(activityTable).values({
     type: "bot_started",
     title: "Bot Started",
     description: `Trading bot activated with strategy ID ${parsed.data.strategyId}`,
   });
 
-  const finalState = state ?? (await ensureBotState());
-  res.json(parseBotState(finalState));
+  res.json(parseBotState(state ?? (await ensureBotState())));
 });
 
 router.post("/bot/stop", async (_req, res): Promise<void> => {
   const existing = await ensureBotState();
   const [state] = await db
     .update(botStateTable)
-    .set({
-      isRunning: false,
-      activeStrategyId: null,
-      activeBrokerId: null,
-    })
+    .set({ isRunning: false, activeStrategyId: null, activeBrokerId: null })
     .where(eq(botStateTable.id, existing.id))
     .returning();
 
-  await db.insert(botLogsTable).values({
-    level: "info",
-    message: "Bot stopped by user",
-    action: "stop",
-  });
-
-  await db.insert(activityTable).values({
-    type: "bot_stopped",
-    title: "Bot Stopped",
-    description: "Trading bot deactivated by user",
-  });
-
-  // Refresh schedule so the next scheduled start is shown correctly
+  await db.insert(botLogsTable).values({ level: "info", message: "Bot stopped by user", action: "stop" });
+  await db.insert(activityTable).values({ type: "bot_stopped", title: "Bot Stopped", description: "Trading bot deactivated by user" });
   await refreshSchedule();
 
-  const finalState = state ?? (await ensureBotState());
-  res.json(parseBotState(finalState));
+  res.json(parseBotState(state ?? (await ensureBotState())));
 });
 
 router.post("/bot/run-cycle", async (_req, res): Promise<void> => {
@@ -118,57 +89,15 @@ router.post("/bot/run-cycle", async (_req, res): Promise<void> => {
     return;
   }
 
-  const [strategy] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, state.activeStrategyId));
-  if (!strategy) { res.status(400).json({ error: "Strategy not found" }); return; }
+  await runTradingCycle();
 
-  const symbols: string[] = Array.isArray(strategy.symbols) ? strategy.symbols : [];
-  const rules = await db.select().from(decisionRulesTable).where(eq(decisionRulesTable.strategyId, strategy.id));
-  const paperBrokerId = await ensurePaperBroker();
-  const brokerId = state.activeBrokerId ?? paperBrokerId;
-  const maxPositionSize = parseFloat(strategy.maxPositionSize ?? "1000");
-  const stopLossPct = parseFloat(strategy.stopLossPercent ?? "2");
-  const takeProfitPct = parseFloat(strategy.takeProfitPercent ?? "5");
+  const logs = await db
+    .select()
+    .from(botLogsTable)
+    .orderBy(desc(botLogsTable.createdAt))
+    .limit(20);
 
-  const results: object[] = [];
-  const prices: Record<string, number> = {};
-
-  for (const symbol of symbols) {
-    const data = await fetchMarketData(symbol);
-    if (!data) { results.push({ symbol, error: "No market data" }); continue; }
-    prices[symbol] = data.currentPrice;
-
-    const trigger = await checkStopLossTakeProfit(brokerId, symbol, data.currentPrice, stopLossPct, takeProfitPct);
-    if (trigger) {
-      const r = await executePaperSell(brokerId, strategy.id, symbol, data.currentPrice);
-      results.push({ symbol, action: trigger, price: data.currentPrice, executed: r.executed, pnl: r.realizedPnl });
-      continue;
-    }
-
-    const snapshot = {
-      symbol, rsi: data.rsi, maCondition: data.maCondition, volumeCondition: data.volumeCondition,
-      trendCondition: data.trendCondition, aiSignal: null as string | null, aiConfidence: null as number | null,
-      priceChangePercent: data.priceChangePercent, candlestickPattern: data.candlestickPattern,
-      timeFrame: data.timeFrame, volumeIncreaseLevel: data.volumeIncreaseLevel,
-    };
-    const decision = evaluateDecisionTable(rules, snapshot);
-
-    let executed = false;
-    let tradeDetail: object = {};
-    if (decision.action === "buy") {
-      const r = await executePaperBuy(brokerId, strategy.id, symbol, data.currentPrice, maxPositionSize * decision.quantityMultiplier);
-      executed = r.executed;
-      tradeDetail = { quantity: r.quantity, cost: r.cost };
-    } else if (decision.action === "sell") {
-      const r = await executePaperSell(brokerId, strategy.id, symbol, data.currentPrice);
-      executed = r.executed;
-      tradeDetail = { pnl: r.realizedPnl };
-    }
-
-    results.push({ symbol, price: data.currentPrice, rsi: data.rsi, ma: data.maCondition, trend: data.trendCondition, pattern: data.candlestickPattern, vol: data.volumeIncreaseLevel, action: decision.action, reason: decision.reason, executed, ...tradeDetail });
-  }
-
-  if (Object.keys(prices).length > 0) await updatePaperPositionPrices(brokerId, prices);
-  res.json({ cycleComplete: true, symbolsProcessed: symbols.length, results });
+  res.json({ cycleComplete: true, logs: logs.map((l) => ({ level: l.level, message: l.message, action: l.action, symbol: l.symbol })) });
 });
 
 router.get("/bot/logs", async (req, res): Promise<void> => {
@@ -184,6 +113,24 @@ router.get("/bot/logs", async (req, res): Promise<void> => {
     .limit(params.data.limit ?? 50);
 
   res.json(logs);
+});
+
+// Schwab auth URL for frontend
+router.get("/bot/schwab-auth-url", async (req, res): Promise<void> => {
+  const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").filter(Boolean);
+  const host = domains[0] ?? req.get("host") ?? "localhost";
+  const proto = host.includes("replit") ? "https" : "http";
+  const redirectUri = `${proto}://${host}/api/schwab/callback`;
+  const clientId = process.env.SCHWAB_APP_KEY ?? "";
+  const params = new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: redirectUri, scope: "readonly,PlaceTrades" });
+  const authUrl = `https://api.schwabapi.com/v1/oauth/authorize?${params.toString()}`;
+  res.json({ authUrl, redirectUri });
+});
+
+// Ensure paper broker is initialized
+router.post("/bot/init-paper", async (_req, res): Promise<void> => {
+  const brokerId = await ensurePaperBroker();
+  res.json({ brokerId });
 });
 
 export default router;
