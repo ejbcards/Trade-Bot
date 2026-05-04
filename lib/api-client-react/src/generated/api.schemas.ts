@@ -275,6 +275,21 @@ export interface DecisionRule {
   description?: string | null;
   priority: number;
   isActive: boolean;
+  /**
+   * head_and_shoulders | inverse_head_and_shoulders | cup_and_handle | triple_top | triple_bottom | any
+   * @nullable
+   */
+  candlestickPattern?: string | null;
+  /**
+   * daily_5min | 15min | 4hr_30min | any
+   * @nullable
+   */
+  timeFrame?: string | null;
+  /**
+   * small | medium | large | any  (S=15%, M=20%, L=30%)
+   * @nullable
+   */
+  volumeIncreaseLevel?: string | null;
   /** @nullable */
   rsiMin?: number | null;
   /** @nullable */
@@ -305,7 +320,7 @@ export interface DecisionRule {
   priceChangeMin?: number | null;
   /** @nullable */
   priceChangeMax?: number | null;
-  /** buy | sell | hold */
+  /** buy | sell | hold | watchlist */
   action: string;
   quantityMultiplier: number;
   /** @nullable */
@@ -320,6 +335,12 @@ export interface CreateDecisionRuleBody {
   description?: string | null;
   priority?: number;
   isActive?: boolean;
+  /** @nullable */
+  candlestickPattern?: string | null;
+  /** @nullable */
+  timeFrame?: string | null;
+  /** @nullable */
+  volumeIncreaseLevel?: string | null;
   /** @nullable */
   rsiMin?: number | null;
   /** @nullable */
@@ -351,6 +372,12 @@ export interface UpdateDecisionRuleBody {
   priority?: number;
   isActive?: boolean;
   /** @nullable */
+  candlestickPattern?: string | null;
+  /** @nullable */
+  timeFrame?: string | null;
+  /** @nullable */
+  volumeIncreaseLevel?: string | null;
+  /** @nullable */
   rsiMin?: number | null;
   /** @nullable */
   rsiMax?: number | null;
@@ -376,6 +403,21 @@ export interface UpdateDecisionRuleBody {
 
 export interface MarketSnapshot {
   symbol: string;
+  /**
+   * head_and_shoulders | inverse_head_and_shoulders | cup_and_handle | triple_top | triple_bottom
+   * @nullable
+   */
+  candlestickPattern?: string | null;
+  /**
+   * daily_5min | 15min | 4hr_30min
+   * @nullable
+   */
+  timeFrame?: string | null;
+  /**
+   * small | medium | large
+   * @nullable
+   */
+  volumeIncreaseLevel?: string | null;
   /** @nullable */
   rsi?: number | null;
   /**
@@ -406,7 +448,7 @@ export interface MarketSnapshot {
 
 export interface EvaluationResult {
   symbol: string;
-  /** buy | sell | hold */
+  /** buy | sell | hold | watchlist */
   action: string;
   quantityMultiplier: number;
   /** @nullable */

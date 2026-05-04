@@ -63,6 +63,9 @@ router.post("/strategies/:id/decision-rules", async (req, res): Promise<void> =>
       description: d.description ?? null,
       priority: d.priority ?? 0,
       isActive: d.isActive ?? true,
+      candlestickPattern: d.candlestickPattern ?? null,
+      timeFrame: d.timeFrame ?? null,
+      volumeIncreaseLevel: d.volumeIncreaseLevel ?? null,
       rsiMin: d.rsiMin != null ? String(d.rsiMin) : null,
       rsiMax: d.rsiMax != null ? String(d.rsiMax) : null,
       maCondition: d.maCondition ?? null,
@@ -97,6 +100,9 @@ router.patch("/strategies/:id/decision-rules/:ruleId", async (req, res): Promise
   if (d.description != null) updateData.description = d.description;
   if (d.priority != null) updateData.priority = d.priority;
   if (d.isActive != null) updateData.isActive = d.isActive;
+  if ("candlestickPattern" in d) updateData.candlestickPattern = d.candlestickPattern ?? null;
+  if ("timeFrame" in d) updateData.timeFrame = d.timeFrame ?? null;
+  if ("volumeIncreaseLevel" in d) updateData.volumeIncreaseLevel = d.volumeIncreaseLevel ?? null;
   if ("rsiMin" in d) updateData.rsiMin = d.rsiMin != null ? String(d.rsiMin) : null;
   if ("rsiMax" in d) updateData.rsiMax = d.rsiMax != null ? String(d.rsiMax) : null;
   if ("maCondition" in d) updateData.maCondition = d.maCondition ?? null;
@@ -168,6 +174,9 @@ router.post("/strategies/:id/evaluate", async (req, res): Promise<void> => {
 
   const result = evaluateDecisionTable(rules, {
     symbol: snap.data.symbol,
+    candlestickPattern: snap.data.candlestickPattern ?? null,
+    timeFrame: snap.data.timeFrame ?? null,
+    volumeIncreaseLevel: snap.data.volumeIncreaseLevel ?? null,
     rsi: snap.data.rsi ?? null,
     maCondition: snap.data.maCondition ?? null,
     volumeCondition: snap.data.volumeCondition ?? null,

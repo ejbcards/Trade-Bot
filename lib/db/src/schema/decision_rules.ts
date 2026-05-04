@@ -11,6 +11,12 @@ export const decisionRulesTable = pgTable("decision_rules", {
   priority: integer("priority").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
 
+  // Chart Technical Analysis conditions
+  candlestickPattern: text("candlestick_pattern"),
+  timeFrame: text("time_frame"),
+  volumeIncreaseLevel: text("volume_increase_level"),
+
+  // Classic indicator conditions
   rsiMin: numeric("rsi_min", { precision: 6, scale: 2 }),
   rsiMax: numeric("rsi_max", { precision: 6, scale: 2 }),
   maCondition: text("ma_condition"),
@@ -21,6 +27,7 @@ export const decisionRulesTable = pgTable("decision_rules", {
   priceChangeMin: numeric("price_change_min", { precision: 8, scale: 4 }),
   priceChangeMax: numeric("price_change_max", { precision: 8, scale: 4 }),
 
+  // Action
   action: text("action").notNull(),
   quantityMultiplier: numeric("quantity_multiplier", { precision: 5, scale: 4 }).notNull().default("1"),
   notes: text("notes"),

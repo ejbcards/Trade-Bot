@@ -279,6 +279,20 @@ export const ListDecisionRulesResponseItem = zod.object({
   description: zod.string().nullish(),
   priority: zod.number(),
   isActive: zod.boolean(),
+  candlestickPattern: zod
+    .string()
+    .nullish()
+    .describe(
+      "head_and_shoulders | inverse_head_and_shoulders | cup_and_handle | triple_top | triple_bottom | any",
+    ),
+  timeFrame: zod
+    .string()
+    .nullish()
+    .describe("daily_5min | 15min | 4hr_30min | any"),
+  volumeIncreaseLevel: zod
+    .string()
+    .nullish()
+    .describe("small | medium | large | any  (S=15%, M=20%, L=30%)"),
   rsiMin: zod.number().nullish(),
   rsiMax: zod.number().nullish(),
   maCondition: zod
@@ -294,7 +308,7 @@ export const ListDecisionRulesResponseItem = zod.object({
   aiConfidenceMin: zod.number().nullish(),
   priceChangeMin: zod.number().nullish(),
   priceChangeMax: zod.number().nullish(),
-  action: zod.string().describe("buy | sell | hold"),
+  action: zod.string().describe("buy | sell | hold | watchlist"),
   quantityMultiplier: zod.number(),
   notes: zod.string().nullish(),
   createdAt: zod.string(),
@@ -320,6 +334,9 @@ export const CreateDecisionRuleBody = zod.object({
   description: zod.string().nullish(),
   priority: zod.number().default(createDecisionRuleBodyPriorityDefault),
   isActive: zod.boolean().default(createDecisionRuleBodyIsActiveDefault),
+  candlestickPattern: zod.string().nullish(),
+  timeFrame: zod.string().nullish(),
+  volumeIncreaseLevel: zod.string().nullish(),
   rsiMin: zod.number().nullish(),
   rsiMax: zod.number().nullish(),
   maCondition: zod.string().nullish(),
@@ -349,6 +366,9 @@ export const UpdateDecisionRuleBody = zod.object({
   description: zod.string().nullish(),
   priority: zod.number().optional(),
   isActive: zod.boolean().optional(),
+  candlestickPattern: zod.string().nullish(),
+  timeFrame: zod.string().nullish(),
+  volumeIncreaseLevel: zod.string().nullish(),
   rsiMin: zod.number().nullish(),
   rsiMax: zod.number().nullish(),
   maCondition: zod.string().nullish(),
@@ -370,6 +390,20 @@ export const UpdateDecisionRuleResponse = zod.object({
   description: zod.string().nullish(),
   priority: zod.number(),
   isActive: zod.boolean(),
+  candlestickPattern: zod
+    .string()
+    .nullish()
+    .describe(
+      "head_and_shoulders | inverse_head_and_shoulders | cup_and_handle | triple_top | triple_bottom | any",
+    ),
+  timeFrame: zod
+    .string()
+    .nullish()
+    .describe("daily_5min | 15min | 4hr_30min | any"),
+  volumeIncreaseLevel: zod
+    .string()
+    .nullish()
+    .describe("small | medium | large | any  (S=15%, M=20%, L=30%)"),
   rsiMin: zod.number().nullish(),
   rsiMax: zod.number().nullish(),
   maCondition: zod
@@ -385,7 +419,7 @@ export const UpdateDecisionRuleResponse = zod.object({
   aiConfidenceMin: zod.number().nullish(),
   priceChangeMin: zod.number().nullish(),
   priceChangeMax: zod.number().nullish(),
-  action: zod.string().describe("buy | sell | hold"),
+  action: zod.string().describe("buy | sell | hold | watchlist"),
   quantityMultiplier: zod.number(),
   notes: zod.string().nullish(),
   createdAt: zod.string(),
@@ -409,6 +443,17 @@ export const EvaluateStrategyParams = zod.object({
 
 export const EvaluateStrategyBody = zod.object({
   symbol: zod.string(),
+  candlestickPattern: zod
+    .string()
+    .nullish()
+    .describe(
+      "head_and_shoulders | inverse_head_and_shoulders | cup_and_handle | triple_top | triple_bottom",
+    ),
+  timeFrame: zod.string().nullish().describe("daily_5min | 15min | 4hr_30min"),
+  volumeIncreaseLevel: zod
+    .string()
+    .nullish()
+    .describe("small | medium | large"),
   rsi: zod.number().nullish(),
   maCondition: zod
     .string()
@@ -426,7 +471,7 @@ export const EvaluateStrategyBody = zod.object({
 
 export const EvaluateStrategyResponse = zod.object({
   symbol: zod.string(),
-  action: zod.string().describe("buy | sell | hold"),
+  action: zod.string().describe("buy | sell | hold | watchlist"),
   quantityMultiplier: zod.number(),
   matchedRuleId: zod.number().nullish(),
   matchedRuleName: zod.string().nullish(),

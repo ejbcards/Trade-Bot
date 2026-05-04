@@ -1041,6 +1041,15 @@ components:
           type: integer
         isActive:
           type: boolean
+        candlestickPattern:
+          type: ["string", "null"]
+          description: "head_and_shoulders | inverse_head_and_shoulders | cup_and_handle | triple_top | triple_bottom | any"
+        timeFrame:
+          type: ["string", "null"]
+          description: "daily_5min | 15min | 4hr_30min | any"
+        volumeIncreaseLevel:
+          type: ["string", "null"]
+          description: "small | medium | large | any  (S=15%, M=20%, L=30%)"
         rsiMin:
           type: ["number", "null"]
         rsiMax:
@@ -1065,7 +1074,7 @@ components:
           type: ["number", "null"]
         action:
           type: string
-          description: "buy | sell | hold"
+          description: "buy | sell | hold | watchlist"
         quantityMultiplier:
           type: number
         notes:
@@ -1089,6 +1098,12 @@ components:
         isActive:
           type: boolean
           default: true
+        candlestickPattern:
+          type: ["string", "null"]
+        timeFrame:
+          type: ["string", "null"]
+        volumeIncreaseLevel:
+          type: ["string", "null"]
         rsiMin:
           type: ["number", "null"]
         rsiMax:
@@ -1127,6 +1142,12 @@ components:
           type: integer
         isActive:
           type: boolean
+        candlestickPattern:
+          type: ["string", "null"]
+        timeFrame:
+          type: ["string", "null"]
+        volumeIncreaseLevel:
+          type: ["string", "null"]
         rsiMin:
           type: ["number", "null"]
         rsiMax:
@@ -1157,6 +1178,15 @@ components:
       properties:
         symbol:
           type: string
+        candlestickPattern:
+          type: ["string", "null"]
+          description: "head_and_shoulders | inverse_head_and_shoulders | cup_and_handle | triple_top | triple_bottom"
+        timeFrame:
+          type: ["string", "null"]
+          description: "daily_5min | 15min | 4hr_30min"
+        volumeIncreaseLevel:
+          type: ["string", "null"]
+          description: "small | medium | large"
         rsi:
           type: ["number", "null"]
         maCondition:
@@ -1184,7 +1214,7 @@ components:
           type: string
         action:
           type: string
-          description: "buy | sell | hold"
+          description: "buy | sell | hold | watchlist"
         quantityMultiplier:
           type: number
         matchedRuleId:

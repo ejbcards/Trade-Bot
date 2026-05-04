@@ -2,6 +2,9 @@ import { type DecisionRule } from "@workspace/db";
 
 export interface MarketSnapshot {
   symbol: string;
+  candlestickPattern?: string | null;
+  timeFrame?: string | null;
+  volumeIncreaseLevel?: string | null;
   rsi?: number | null;
   maCondition?: string | null;
   volumeCondition?: string | null;
@@ -13,7 +16,7 @@ export interface MarketSnapshot {
 
 export interface EvaluationResult {
   symbol: string;
-  action: "buy" | "sell" | "hold";
+  action: "buy" | "sell" | "hold" | "watchlist";
   quantityMultiplier: number;
   matchedRuleId: number | null;
   matchedRuleName: string | null;
@@ -28,37 +31,42 @@ function parseNum(val: string | null | undefined): number | null {
 }
 
 function ruleMatches(rule: DecisionRule, snap: MarketSnapshot): boolean {
+  // Chart TA conditions
+  if (rule.candlestickPattern && rule.candlestickPattern !== "any") {
+    if (snap.candlestickPattern !== rule.candlestickPattern) return false;
+  }
+  if (rule.timeFrame && rule.timeFrame !== "any") {
+    if (snap.timeFrame !== rule.timeFrame) return false;
+  }
+  if (rule.volumeIncreaseLevel && rule.volumeIncreaseLevel !== "any") {
+    if (snap.volumeIncreaseLevel !== rule.volumeIncreaseLevel) return false;
+  }
+
+  // Classic indicator conditions
   const rsiMin = parseNum(rule.rsiMin);
   const rsiMax = parseNum(rule.rsiMax);
-
   if (rsiMin !== null) {
     if (snap.rsi == null || snap.rsi < rsiMin) return false;
   }
   if (rsiMax !== null) {
     if (snap.rsi == null || snap.rsi > rsiMax) return false;
   }
-
   if (rule.maCondition && rule.maCondition !== "any") {
     if (snap.maCondition !== rule.maCondition) return false;
   }
-
   if (rule.volumeCondition && rule.volumeCondition !== "any") {
     if (snap.volumeCondition !== rule.volumeCondition) return false;
   }
-
   if (rule.trendCondition && rule.trendCondition !== "any") {
     if (snap.trendCondition !== rule.trendCondition) return false;
   }
-
   if (rule.aiSignal && rule.aiSignal !== "any") {
     if (snap.aiSignal !== rule.aiSignal) return false;
   }
-
   const confMin = parseNum(rule.aiConfidenceMin);
   if (confMin !== null) {
     if (snap.aiConfidence == null || snap.aiConfidence < confMin) return false;
   }
-
   const pcMin = parseNum(rule.priceChangeMin);
   const pcMax = parseNum(rule.priceChangeMax);
   if (pcMin !== null) {
@@ -83,7 +91,7 @@ export function evaluateDecisionTable(
     if (ruleMatches(rule, snap)) {
       return {
         symbol: snap.symbol,
-        action: rule.action as "buy" | "sell" | "hold",
+        action: rule.action as "buy" | "sell" | "hold" | "watchlist",
         quantityMultiplier: parseNum(rule.quantityMultiplier) ?? 1,
         matchedRuleId: rule.id,
         matchedRuleName: rule.name,
