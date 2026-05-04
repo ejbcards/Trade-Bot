@@ -11,6 +11,8 @@ export const botStateTable = pgTable("bot_state", {
   tradesExecutedToday: integer("trades_executed_today").notNull().default(0),
   dailyPnl: numeric("daily_pnl", { precision: 18, scale: 4 }).notNull().default("0"),
   lastHeartbeat: timestamp("last_heartbeat", { withTimezone: true }),
+  scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
+  scheduledStopAt: timestamp("scheduled_stop_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 

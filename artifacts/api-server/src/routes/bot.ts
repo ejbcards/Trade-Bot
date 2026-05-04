@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db, botStateTable, botLogsTable, activityTable } from "@workspace/db";
 import { StartBotBody, GetBotLogsQueryParams } from "@workspace/api-zod";
+import { refreshSchedule } from "../lib/scheduler";
 
 const router: IRouter = Router();
 
@@ -30,6 +31,8 @@ function parseBotState(s: typeof botStateTable.$inferSelect) {
     tradesExecutedToday: s.tradesExecutedToday,
     dailyPnl: parseFloat(s.dailyPnl),
     lastHeartbeat: s.lastHeartbeat?.toISOString() ?? null,
+    scheduledStartAt: s.scheduledStartAt?.toISOString() ?? null,
+    scheduledStopAt: s.scheduledStopAt?.toISOString() ?? null,
   };
 }
 
@@ -44,6 +47,7 @@ router.post("/bot/start", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const existing = await ensureBotState();
   const [state] = await db
     .update(botStateTable)
     .set({
@@ -53,22 +57,12 @@ router.post("/bot/start", async (req, res): Promise<void> => {
       activeBrokerId: parsed.data.brokerId,
       lastHeartbeat: new Date(),
     })
+    .where(eq(botStateTable.id, existing.id))
     .returning();
-
-  if (!state) {
-    await db.insert(botStateTable).values({
-      isRunning: true,
-      startedAt: new Date(),
-      activeStrategyId: parsed.data.strategyId,
-      activeBrokerId: parsed.data.brokerId,
-      tradesExecutedToday: 0,
-      dailyPnl: "0",
-    });
-  }
 
   await db.insert(botLogsTable).values({
     level: "info",
-    message: "Bot started successfully",
+    message: "Bot started manually",
     action: "start",
   });
 
@@ -78,11 +72,12 @@ router.post("/bot/start", async (req, res): Promise<void> => {
     description: `Trading bot activated with strategy ID ${parsed.data.strategyId}`,
   });
 
-  const finalState = await ensureBotState();
+  const finalState = state ?? (await ensureBotState());
   res.json(parseBotState(finalState));
 });
 
 router.post("/bot/stop", async (_req, res): Promise<void> => {
+  const existing = await ensureBotState();
   const [state] = await db
     .update(botStateTable)
     .set({
@@ -90,6 +85,7 @@ router.post("/bot/stop", async (_req, res): Promise<void> => {
       activeStrategyId: null,
       activeBrokerId: null,
     })
+    .where(eq(botStateTable.id, existing.id))
     .returning();
 
   await db.insert(botLogsTable).values({
@@ -103,6 +99,9 @@ router.post("/bot/stop", async (_req, res): Promise<void> => {
     title: "Bot Stopped",
     description: "Trading bot deactivated by user",
   });
+
+  // Refresh schedule so the next scheduled start is shown correctly
+  await refreshSchedule();
 
   const finalState = state ?? (await ensureBotState());
   res.json(parseBotState(finalState));

@@ -7,12 +7,42 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Activity, Play, Square, TrendingUp, TrendingDown, RefreshCcw } from "lucide-react";
+import { Activity, Play, Square, TrendingUp, TrendingDown, RefreshCcw, Clock, CalendarClock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+
+function formatScheduledTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  const diffH = diffMs / (1000 * 60 * 60);
+
+  const timeStr = d.toLocaleTimeString("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  const dateStr = d.toLocaleDateString("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+
+  if (diffH < 1 && diffMs > 0) {
+    const mins = Math.round(diffMs / 60000);
+    return `in ${mins} min${mins !== 1 ? "s" : ""} (${timeStr} ET)`;
+  }
+  if (diffH < 24 && diffMs > 0) {
+    return `Today ${timeStr} ET`;
+  }
+  return `${dateStr} ${timeStr} ET`;
+}
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
@@ -176,16 +206,23 @@ export default function Dashboard() {
                 <p className="text-xs text-muted-foreground mt-1">Unrealized P&L</p>
               </CardContent>
             </Card>
-            <Card className={botStatus?.isRunning ? "border-emerald-500/50 bg-emerald-500/5" : ""}>
+            <Card className={botStatus?.isRunning ? "border-emerald-500/50 bg-emerald-500/5" : "border-amber-500/20 bg-amber-500/5"}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">System Status</CardTitle>
-                <div className={`w-2.5 h-2.5 rounded-full ${botStatus?.isRunning ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" : "bg-destructive"}`} />
+                <div className={`w-2.5 h-2.5 rounded-full ${botStatus?.isRunning ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" : "bg-amber-500"}`} />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{botStatus?.isRunning ? "Running" : "Idle"}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {summary.tradesExecutedToday} trades executed today
-                </p>
+                <div className="text-2xl font-bold">{botStatus?.isRunning ? "Running" : "Scheduled"}</div>
+                {botStatus?.isRunning ? (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {summary.tradesExecutedToday} trades executed today
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-400/90 mt-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3 inline" />
+                    Starts {formatScheduledTime(botStatus?.scheduledStartAt)}
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>

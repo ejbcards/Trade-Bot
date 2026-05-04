@@ -895,6 +895,12 @@ components:
           type: number
         lastHeartbeat:
           type: ["string", "null"]
+        scheduledStartAt:
+          type: ["string", "null"]
+          description: "ISO timestamp of next scheduled market-open start (9:30 AM ET)"
+        scheduledStopAt:
+          type: ["string", "null"]
+          description: "ISO timestamp of next scheduled market-close stop (4:00 PM ET)"
       required: [isRunning, tradesExecutedToday, dailyPnl]
 
     StartBotBody:

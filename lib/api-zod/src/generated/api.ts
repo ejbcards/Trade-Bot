@@ -490,6 +490,14 @@ export const GetBotStatusResponse = zod.object({
   tradesExecutedToday: zod.number(),
   dailyPnl: zod.number(),
   lastHeartbeat: zod.string().nullish(),
+  scheduledStartAt: zod
+    .string()
+    .nullish()
+    .describe("ISO timestamp of next scheduled market-open start (9:30 AM ET)"),
+  scheduledStopAt: zod
+    .string()
+    .nullish()
+    .describe("ISO timestamp of next scheduled market-close stop (4:00 PM ET)"),
 });
 
 /**
@@ -508,6 +516,14 @@ export const StartBotResponse = zod.object({
   tradesExecutedToday: zod.number(),
   dailyPnl: zod.number(),
   lastHeartbeat: zod.string().nullish(),
+  scheduledStartAt: zod
+    .string()
+    .nullish()
+    .describe("ISO timestamp of next scheduled market-open start (9:30 AM ET)"),
+  scheduledStopAt: zod
+    .string()
+    .nullish()
+    .describe("ISO timestamp of next scheduled market-close stop (4:00 PM ET)"),
 });
 
 /**
@@ -521,6 +537,14 @@ export const StopBotResponse = zod.object({
   tradesExecutedToday: zod.number(),
   dailyPnl: zod.number(),
   lastHeartbeat: zod.string().nullish(),
+  scheduledStartAt: zod
+    .string()
+    .nullish()
+    .describe("ISO timestamp of next scheduled market-open start (9:30 AM ET)"),
+  scheduledStopAt: zod
+    .string()
+    .nullish()
+    .describe("ISO timestamp of next scheduled market-close stop (4:00 PM ET)"),
 });
 
 /**

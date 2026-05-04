@@ -178,6 +178,16 @@ export interface BotStatus {
   dailyPnl: number;
   /** @nullable */
   lastHeartbeat?: string | null;
+  /**
+   * ISO timestamp of next scheduled market-open start (9:30 AM ET)
+   * @nullable
+   */
+  scheduledStartAt?: string | null;
+  /**
+   * ISO timestamp of next scheduled market-close stop (4:00 PM ET)
+   * @nullable
+   */
+  scheduledStopAt?: string | null;
 }
 
 export interface StartBotBody {
