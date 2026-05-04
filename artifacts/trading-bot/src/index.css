@@ -66,61 +66,63 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* LIGHT MODE */
+/* GOLDENMOOSE THEME */
 :root {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .05);
+  --button-outline: rgba(0,0,0, .15);
+  --badge-outline: rgba(0,0,0, .08);
 
-  /* Automatic computation of border around primary / danger buttons */
-  --opaque-button-border-intensity: -8; /* In terms of percentages */
+  --opaque-button-border-intensity: -8;
 
-  /* Backgrounds applied on top of other backgrounds when hovered/active */
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .09);
 
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
+  /* Medium grey backgrounds */
+  --background: 0 0% 18%;
+  --foreground: 40 10% 93%;
 
-  --card: 222 47% 14%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217 33% 20%;
+  --card: 0 0% 22%;
+  --card-foreground: 40 10% 93%;
+  --card-border: 43 70% 40%;
 
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217 33% 20%;
+  --popover: 0 0% 20%;
+  --popover-foreground: 40 10% 93%;
+  --popover-border: 43 70% 40%;
 
-  --primary: 189 94% 43%;
-  --primary-foreground: 222 47% 11%;
+  /* Gold primary */
+  --primary: 43 96% 52%;
+  --primary-foreground: 0 0% 8%;
 
-  --secondary: 217 33% 20%;
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 0 0% 26%;
+  --secondary-foreground: 40 10% 93%;
 
-  --muted: 217 33% 20%;
-  --muted-foreground: 215 20% 65%;
+  --muted: 0 0% 26%;
+  --muted-foreground: 0 0% 62%;
 
-  --accent: 217 33% 20%;
-  --accent-foreground: 210 40% 98%;
+  --accent: 0 0% 26%;
+  --accent-foreground: 40 10% 93%;
 
-  --destructive: 346 87% 43%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 0 80% 45%;
+  --destructive-foreground: 40 10% 93%;
 
-  --border: 217 33% 20%;
-  --input: 217 33% 20%;
-  --ring: 189 94% 43%;
+  /* Gold borders everywhere */
+  --border: 43 60% 35%;
+  --input: 0 0% 26%;
+  --ring: 43 96% 52%;
 
-  --sidebar: 222 47% 14%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217 33% 20%;
-  --sidebar-primary: 189 94% 43%;
-  --sidebar-primary-foreground: 222 47% 11%;
-  --sidebar-accent: 217 33% 20%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 189 94% 43%;
+  /* Sidebar — slightly darker grey, gold border */
+  --sidebar: 0 0% 14%;
+  --sidebar-foreground: 40 10% 93%;
+  --sidebar-border: 43 65% 35%;
+  --sidebar-primary: 43 96% 52%;
+  --sidebar-primary-foreground: 0 0% 8%;
+  --sidebar-accent: 0 0% 22%;
+  --sidebar-accent-foreground: 40 10% 93%;
+  --sidebar-ring: 43 96% 52%;
 
-  --chart-1: 189 94% 43%;
+  --chart-1: 43 96% 52%;
   --chart-2: 142 71% 45%;
-  --chart-3: 38 92% 50%;
-  --chart-4: 346 87% 43%;
+  --chart-3: 189 94% 43%;
+  --chart-4: 0 80% 45%;
   --chart-5: 262 80% 50%;
 
   --app-font-sans: 'Inter', sans-serif;
@@ -173,55 +175,54 @@
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .05);
 
-  --opaque-button-border-intensity: 9;  /* In terms of percentages */
+  --opaque-button-border-intensity: 9;
 
-  /* Backgrounds applied on top of other backgrounds when hovered/active */
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
+  --background: 0 0% 18%;
+  --foreground: 40 10% 93%;
 
-  --card: 222 47% 14%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217 33% 20%;
+  --card: 0 0% 22%;
+  --card-foreground: 40 10% 93%;
+  --card-border: 43 70% 40%;
 
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217 33% 20%;
+  --popover: 0 0% 20%;
+  --popover-foreground: 40 10% 93%;
+  --popover-border: 43 70% 40%;
 
-  --primary: 189 94% 43%;
-  --primary-foreground: 222 47% 11%;
+  --primary: 43 96% 52%;
+  --primary-foreground: 0 0% 8%;
 
-  --secondary: 217 33% 20%;
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 0 0% 26%;
+  --secondary-foreground: 40 10% 93%;
 
-  --muted: 217 33% 20%;
-  --muted-foreground: 215 20% 65%;
+  --muted: 0 0% 26%;
+  --muted-foreground: 0 0% 62%;
 
-  --accent: 217 33% 20%;
-  --accent-foreground: 210 40% 98%;
+  --accent: 0 0% 26%;
+  --accent-foreground: 40 10% 93%;
 
-  --destructive: 346 87% 43%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 0 80% 45%;
+  --destructive-foreground: 40 10% 93%;
 
-  --border: 217 33% 20%;
-  --input: 217 33% 20%;
-  --ring: 189 94% 43%;
+  --border: 43 60% 35%;
+  --input: 0 0% 26%;
+  --ring: 43 96% 52%;
 
-  --sidebar: 222 47% 14%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217 33% 20%;
-  --sidebar-primary: 189 94% 43%;
-  --sidebar-primary-foreground: 222 47% 11%;
-  --sidebar-accent: 217 33% 20%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 189 94% 43%;
+  --sidebar: 0 0% 14%;
+  --sidebar-foreground: 40 10% 93%;
+  --sidebar-border: 43 65% 35%;
+  --sidebar-primary: 43 96% 52%;
+  --sidebar-primary-foreground: 0 0% 8%;
+  --sidebar-accent: 0 0% 22%;
+  --sidebar-accent-foreground: 40 10% 93%;
+  --sidebar-ring: 43 96% 52%;
 
-  --chart-1: 189 94% 43%;
+  --chart-1: 43 96% 52%;
   --chart-2: 142 71% 45%;
-  --chart-3: 38 92% 50%;
-  --chart-4: 346 87% 43%;
+  --chart-3: 189 94% 43%;
+  --chart-4: 0 80% 45%;
   --chart-5: 262 80% 50%;
 
   --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);

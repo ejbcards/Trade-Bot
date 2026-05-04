@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Wallet, BrainCircuit, PieChart, ActivitySquare, BarChart2 } from "lucide-react";
+import { LayoutDashboard, Wallet, PieChart, ActivitySquare, BarChart2, BrainCircuit, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -17,9 +17,9 @@ export function Sidebar() {
   return (
     <aside className="w-64 border-r bg-sidebar flex flex-col h-full flex-shrink-0">
       <div className="h-16 flex items-center px-6 border-b">
-        <div className="flex items-center gap-2 text-primary font-bold text-xl tracking-tight">
-          <BrainCircuit className="w-6 h-6" />
-          <span>NexusTrade</span>
+        <div className="flex items-center gap-2 font-bold text-xl tracking-tight" style={{ color: "hsl(43 96% 52%)" }}>
+          <Trophy className="w-6 h-6" />
+          <span>GoldenMoose</span>
         </div>
       </div>
 
