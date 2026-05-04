@@ -4,7 +4,7 @@ import { db, positionsTable, brokersTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
-function parsePosition(p: typeof positionsTable.$inferSelect & { brokerName?: string }) {
+function parsePosition(p: typeof positionsTable.$inferSelect & { brokerName?: string | null }) {
   return {
     ...p,
     quantity: parseFloat(p.quantity),

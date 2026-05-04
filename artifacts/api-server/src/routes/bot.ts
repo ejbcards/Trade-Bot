@@ -3,6 +3,10 @@ import { desc, eq } from "drizzle-orm";
 import { db, botStateTable, botLogsTable, activityTable } from "@workspace/db";
 import { StartBotBody, GetBotLogsQueryParams } from "@workspace/api-zod";
 import { refreshSchedule } from "../lib/scheduler";
+import { fetchMarketData } from "../lib/marketData";
+import { ensurePaperBroker, executePaperBuy, executePaperSell, checkStopLossTakeProfit, updatePaperPositionPrices } from "../lib/paperTrading";
+import { evaluateDecisionTable } from "../lib/decisionEngine";
+import { strategiesTable, decisionRulesTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -105,6 +109,66 @@ router.post("/bot/stop", async (_req, res): Promise<void> => {
 
   const finalState = state ?? (await ensureBotState());
   res.json(parseBotState(finalState));
+});
+
+router.post("/bot/run-cycle", async (_req, res): Promise<void> => {
+  const [state] = await db.select().from(botStateTable).limit(1);
+  if (!state?.activeStrategyId) {
+    res.status(400).json({ error: "Bot not running or no active strategy" });
+    return;
+  }
+
+  const [strategy] = await db.select().from(strategiesTable).where(eq(strategiesTable.id, state.activeStrategyId));
+  if (!strategy) { res.status(400).json({ error: "Strategy not found" }); return; }
+
+  const symbols: string[] = Array.isArray(strategy.symbols) ? strategy.symbols : [];
+  const rules = await db.select().from(decisionRulesTable).where(eq(decisionRulesTable.strategyId, strategy.id));
+  const paperBrokerId = await ensurePaperBroker();
+  const brokerId = state.activeBrokerId ?? paperBrokerId;
+  const maxPositionSize = parseFloat(strategy.maxPositionSize ?? "1000");
+  const stopLossPct = parseFloat(strategy.stopLossPercent ?? "2");
+  const takeProfitPct = parseFloat(strategy.takeProfitPercent ?? "5");
+
+  const results: object[] = [];
+  const prices: Record<string, number> = {};
+
+  for (const symbol of symbols) {
+    const data = await fetchMarketData(symbol);
+    if (!data) { results.push({ symbol, error: "No market data" }); continue; }
+    prices[symbol] = data.currentPrice;
+
+    const trigger = await checkStopLossTakeProfit(brokerId, symbol, data.currentPrice, stopLossPct, takeProfitPct);
+    if (trigger) {
+      const r = await executePaperSell(brokerId, strategy.id, symbol, data.currentPrice);
+      results.push({ symbol, action: trigger, price: data.currentPrice, executed: r.executed, pnl: r.realizedPnl });
+      continue;
+    }
+
+    const snapshot = {
+      symbol, rsi: data.rsi, maCondition: data.maCondition, volumeCondition: data.volumeCondition,
+      trendCondition: data.trendCondition, aiSignal: null as string | null, aiConfidence: null as number | null,
+      priceChangePercent: data.priceChangePercent, candlestickPattern: data.candlestickPattern,
+      timeFrame: data.timeFrame, volumeIncreaseLevel: data.volumeIncreaseLevel,
+    };
+    const decision = evaluateDecisionTable(rules, snapshot);
+
+    let executed = false;
+    let tradeDetail: object = {};
+    if (decision.action === "buy") {
+      const r = await executePaperBuy(brokerId, strategy.id, symbol, data.currentPrice, maxPositionSize * decision.quantityMultiplier);
+      executed = r.executed;
+      tradeDetail = { quantity: r.quantity, cost: r.cost };
+    } else if (decision.action === "sell") {
+      const r = await executePaperSell(brokerId, strategy.id, symbol, data.currentPrice);
+      executed = r.executed;
+      tradeDetail = { pnl: r.realizedPnl };
+    }
+
+    results.push({ symbol, price: data.currentPrice, rsi: data.rsi, ma: data.maCondition, trend: data.trendCondition, pattern: data.candlestickPattern, vol: data.volumeIncreaseLevel, action: decision.action, reason: decision.reason, executed, ...tradeDetail });
+  }
+
+  if (Object.keys(prices).length > 0) await updatePaperPositionPrices(brokerId, prices);
+  res.json({ cycleComplete: true, symbolsProcessed: symbols.length, results });
 });
 
 router.get("/bot/logs", async (req, res): Promise<void> => {

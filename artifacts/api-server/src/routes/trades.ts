@@ -5,7 +5,7 @@ import { GetTradeParams, ListTradesQueryParams } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-function parseTrade(t: typeof tradesTable.$inferSelect & { brokerName?: string; strategyName?: string | null }) {
+function parseTrade(t: typeof tradesTable.$inferSelect & { brokerName?: string | null; strategyName?: string | null }) {
   return {
     ...t,
     quantity: parseFloat(t.quantity),

@@ -3,6 +3,14 @@ import { db, botStateTable, botLogsTable, activityTable, strategiesTable, decisi
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { evaluateDecisionTable } from "./decisionEngine";
+import { fetchMarketData } from "./marketData";
+import {
+  ensurePaperBroker,
+  executePaperBuy,
+  executePaperSell,
+  checkStopLossTakeProfit,
+  updatePaperPositionPrices,
+} from "./paperTrading";
 
 const ET_TZ = "America/New_York";
 
@@ -21,40 +29,15 @@ async function logBot(level: string, message: string, action?: string, symbol?: 
 /** Returns next occurrence of HH:MM ET on a weekday >= today */
 function nextWeekdayTime(hour: number, minute: number): Date {
   const now = new Date();
-  // Build a candidate in ET
-  const candidate = new Date(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: ET_TZ,
-      year: "numeric", month: "2-digit", day: "2-digit",
-    }).format(now).replace(/(\d+)\/(\d+)\/(\d+)/, "$3-$1-$2") +
-    `T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`
-  );
-  // Convert ET-string to actual UTC Date
-  const etString = new Intl.DateTimeFormat("en-US", {
-    timeZone: ET_TZ,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-    hour12: false,
-  }).format(now);
-  // Build today's target time in UTC by formatting today's date in ET and applying the offset
-  const todayET = new Date(
-    new Date().toLocaleString("en-US", { timeZone: ET_TZ })
-  );
+  const todayET = new Date(new Date().toLocaleString("en-US", { timeZone: ET_TZ }));
   const target = new Date(todayET);
   target.setHours(hour, minute, 0, 0);
-  // Convert back: difference between local and ET
   const nowET = new Date(new Date().toLocaleString("en-US", { timeZone: ET_TZ }));
   const offsetMs = now.getTime() - nowET.getTime();
   target.setTime(target.getTime() + offsetMs);
 
-  // If already past today, move to next weekday
-  if (target <= now) {
-    target.setDate(target.getDate() + 1);
-  }
-  // Skip weekends
-  while (target.getDay() === 0 || target.getDay() === 6) {
-    target.setDate(target.getDate() + 1);
-  }
+  if (target <= now) target.setDate(target.getDate() + 1);
+  while (target.getDay() === 0 || target.getDay() === 6) target.setDate(target.getDate() + 1);
   return target;
 }
 
@@ -62,7 +45,6 @@ function nextWeekdayTime(hour: number, minute: number): Date {
 export async function refreshSchedule() {
   const nextStart = nextWeekdayTime(9, 30);
   const nextStop  = nextWeekdayTime(16, 0);
-  // Ensure stop is after start
   const adjustedStop = nextStop <= nextStart
     ? new Date(nextStart.getTime() + 6.5 * 60 * 60 * 1000)
     : nextStop;
@@ -92,13 +74,11 @@ async function runTradingCycle() {
   if (!state?.isRunning) return;
   if (!state.activeStrategyId) return;
 
-  // Update heartbeat
   await db
     .update(botStateTable)
     .set({ lastHeartbeat: new Date() })
     .where(eq(botStateTable.id, state.id));
 
-  // Load the active strategy
   const [strategy] = await db
     .select()
     .from(strategiesTable)
@@ -115,39 +95,152 @@ async function runTradingCycle() {
     return;
   }
 
-  // Load rules
   const rules = await db
     .select()
     .from(decisionRulesTable)
     .where(eq(decisionRulesTable.strategyId, strategy.id));
 
-  await logBot("info", `Trading cycle started for strategy "${strategy.name}" — ${symbols.length} symbol(s)`, "cycle_start");
+  // Ensure the paper broker exists and wire it to bot state
+  const paperBrokerId = await ensurePaperBroker();
+  if (!state.activeBrokerId) {
+    await db
+      .update(botStateTable)
+      .set({ activeBrokerId: paperBrokerId })
+      .where(eq(botStateTable.id, state.id));
+  }
+  const brokerId = state.activeBrokerId ?? paperBrokerId;
+
+  await logBot("info", `[LIVE DATA] Cycle started: "${strategy.name}" — ${symbols.length} symbol(s)`, "cycle_start");
+
+  const maxPositionSize = parseFloat(strategy.maxPositionSize ?? "1000");
+  const stopLossPercent = parseFloat(strategy.stopLossPercent ?? "2");
+  const takeProfitPercent = parseFloat(strategy.takeProfitPercent ?? "5");
+  const prices: Record<string, number> = {};
 
   for (const symbol of symbols) {
-    // In paper-trading mode (no Schwab keys), we log what the bot WOULD do.
-    // When Schwab API keys are connected, replace this with live market data.
-    const snapshot = {
-      symbol,
-      rsi: null,
-      maCondition: null,
-      volumeCondition: null,
-      trendCondition: null,
-      aiSignal: null,
-      aiConfidence: null,
-      priceChangePercent: null,
-      candlestickPattern: null,
-      timeFrame: null,
-      volumeIncreaseLevel: null,
-    };
+    try {
+      // ── Fetch real market data ──
+      const data = await fetchMarketData(symbol);
+      if (!data) {
+        await logBot("warn", `[SKIP] ${symbol} — could not fetch market data`, "data_error", symbol);
+        continue;
+      }
 
-    const result = evaluateDecisionTable(rules, snapshot);
+      prices[symbol] = data.currentPrice;
 
-    await logBot(
-      "info",
-      `[PAPER] ${symbol} → ${result.action.toUpperCase()} (${result.reason})`,
-      result.action,
-      symbol
-    );
+      // ── Check stop-loss / take-profit first ──
+      const trigger = await checkStopLossTakeProfit(
+        brokerId,
+        symbol,
+        data.currentPrice,
+        stopLossPercent,
+        takeProfitPercent,
+      );
+
+      if (trigger) {
+        const label = trigger === "stop_loss" ? "STOP-LOSS" : "TAKE-PROFIT";
+        const result = await executePaperSell(brokerId, strategy.id, symbol, data.currentPrice);
+        if (result.executed) {
+          const pnlStr = result.realizedPnl >= 0 ? `+$${result.realizedPnl.toFixed(2)}` : `-$${Math.abs(result.realizedPnl).toFixed(2)}`;
+          await logBot(
+            "info",
+            `[${label}] ${symbol} @ $${data.currentPrice.toFixed(2)} — P&L: ${pnlStr}`,
+            "sell",
+            symbol,
+          );
+          await db.insert(activityTable).values({
+            type: "trade_closed",
+            title: `${label}: ${symbol} closed`,
+            description: `Paper trade closed at $${data.currentPrice.toFixed(2)} — P&L: ${pnlStr}`,
+          });
+          const [s] = await db.select().from(botStateTable).limit(1);
+          if (s) {
+            const currentPnl = parseFloat(s.dailyPnl ?? "0");
+            await db.update(botStateTable).set({
+              tradesExecutedToday: (s.tradesExecutedToday ?? 0) + 1,
+              dailyPnl: String(currentPnl + result.realizedPnl),
+            }).where(eq(botStateTable.id, s.id));
+          }
+        }
+        continue;
+      }
+
+      // ── Evaluate decision rules ──
+      const snapshot = {
+        symbol,
+        rsi: data.rsi,
+        maCondition: data.maCondition,
+        volumeCondition: data.volumeCondition,
+        trendCondition: data.trendCondition,
+        aiSignal: null as string | null,
+        aiConfidence: null as number | null,
+        priceChangePercent: data.priceChangePercent,
+        candlestickPattern: data.candlestickPattern,
+        timeFrame: data.timeFrame,
+        volumeIncreaseLevel: data.volumeIncreaseLevel,
+      };
+
+      const decision = evaluateDecisionTable(rules, snapshot);
+
+      const indicators = [
+        data.rsi !== null ? `RSI:${data.rsi.toFixed(1)}` : null,
+        data.maCondition ? `MA:${data.maCondition}` : null,
+        data.candlestickPattern ? `Pat:${data.candlestickPattern}` : null,
+        data.volumeIncreaseLevel ? `Vol:${data.volumeIncreaseLevel}` : null,
+        data.trendCondition ? `Trend:${data.trendCondition}` : null,
+      ].filter(Boolean).join(" ");
+
+      await logBot(
+        "info",
+        `[LIVE] ${symbol} @ $${data.currentPrice.toFixed(2)} [${indicators}] → ${decision.action.toUpperCase()} — ${decision.reason}`,
+        decision.action,
+        symbol,
+      );
+
+      // ── Execute paper trade ──
+      if (decision.action === "buy") {
+        const r = await executePaperBuy(brokerId, strategy.id, symbol, data.currentPrice, maxPositionSize * decision.quantityMultiplier);
+        if (r.executed) {
+          await db.insert(activityTable).values({
+            type: "trade_opened",
+            title: `Paper BUY: ${symbol}`,
+            description: `Bought ${r.quantity} shares @ $${data.currentPrice.toFixed(2)} (cost $${r.cost.toFixed(2)})`,
+          });
+          const [s] = await db.select().from(botStateTable).limit(1);
+          if (s) {
+            await db.update(botStateTable).set({
+              tradesExecutedToday: (s.tradesExecutedToday ?? 0) + 1,
+            }).where(eq(botStateTable.id, s.id));
+          }
+        }
+      } else if (decision.action === "sell") {
+        const r = await executePaperSell(brokerId, strategy.id, symbol, data.currentPrice);
+        if (r.executed) {
+          const pnlStr = r.realizedPnl >= 0 ? `+$${r.realizedPnl.toFixed(2)}` : `-$${Math.abs(r.realizedPnl).toFixed(2)}`;
+          await db.insert(activityTable).values({
+            type: "trade_closed",
+            title: `Paper SELL: ${symbol}`,
+            description: `Sold @ $${data.currentPrice.toFixed(2)} — P&L: ${pnlStr}`,
+          });
+          const [s] = await db.select().from(botStateTable).limit(1);
+          if (s) {
+            const currentPnl = parseFloat(s.dailyPnl ?? "0");
+            await db.update(botStateTable).set({
+              tradesExecutedToday: (s.tradesExecutedToday ?? 0) + 1,
+              dailyPnl: String(currentPnl + r.realizedPnl),
+            }).where(eq(botStateTable.id, s.id));
+          }
+        }
+      }
+    } catch (err) {
+      logger.error({ symbol, err }, "Error processing symbol in trading cycle");
+      await logBot("error", `Error processing ${symbol}: ${String(err)}`, "error", symbol);
+    }
+  }
+
+  // ── Update all open position prices ──
+  if (Object.keys(prices).length > 0) {
+    await updatePaperPositionPrices(brokerId, prices);
   }
 
   await logBot("info", "Trading cycle complete", "cycle_end");
@@ -158,7 +251,9 @@ async function runTradingCycle() {
 export function startScheduler() {
   logger.info("Starting market scheduler (America/New_York)");
 
-  // Refresh schedule timestamps every hour so the UI always shows accurate times
+  // Ensure paper broker exists on startup
+  ensurePaperBroker().catch((e) => logger.error(e, "Failed to initialize paper broker"));
+
   refreshSchedule().catch((e) => logger.error(e, "Failed initial schedule refresh"));
   cron.schedule("0 * * * *", () => {
     refreshSchedule().catch((e) => logger.error(e, "Schedule refresh failed"));
@@ -172,18 +267,18 @@ export function startScheduler() {
       return;
     }
     logger.info("Market open — starting bot");
+    const paperBrokerId = await ensurePaperBroker();
     const [updated] = await db
       .update(botStateTable)
-      .set({ isRunning: true, startedAt: new Date(), lastHeartbeat: new Date() })
+      .set({ isRunning: true, startedAt: new Date(), lastHeartbeat: new Date(), activeBrokerId: paperBrokerId })
       .returning();
     if (updated) {
       await logBot("info", "Bot auto-started at market open (9:30 AM ET)", "auto_start");
       await db.insert(activityTable).values({
         type: "bot_started",
         title: "Bot Started — Market Open",
-        description: "Trading bot automatically activated at 9:30 AM ET",
+        description: "Trading bot automatically activated at 9:30 AM ET with live market data",
       });
-      // Refresh to move scheduled start to next business day
       await refreshSchedule();
     }
   }, { timezone: ET_TZ });
@@ -227,5 +322,5 @@ export function startScheduler() {
     await logBot("info", "Daily counters reset at midnight ET", "daily_reset");
   }, { timezone: ET_TZ });
 
-  logger.info("Market scheduler ready — bot will auto-start 9:30 AM ET weekdays");
+  logger.info("Market scheduler ready — live market data via Yahoo Finance");
 }
