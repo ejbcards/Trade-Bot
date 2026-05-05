@@ -6,6 +6,7 @@ import type { OptionsContract } from "./marketData";
 export const PAPER_BROKER_TYPE = "paper";
 const PAPER_STARTING_CASH = 100_000;
 const OPTIONS_MULTIPLIER = 100; // 1 contract = 100 shares
+export const MAX_CONCURRENT_OPTIONS = 5;
 
 export async function ensurePaperBroker(): Promise<number> {
   const [existing] = await db
@@ -174,6 +175,24 @@ export async function executePaperSell(
 
 // ─── Options paper trading ────────────────────────────────────────────────
 
+/** Return all open options positions for a given broker + strategy */
+export async function getAllOpenOptionsPositions(brokerId: number, strategyId: number) {
+  return db
+    .select()
+    .from(positionsTable)
+    .where(
+      and(
+        eq(positionsTable.brokerId, brokerId),
+        eq(positionsTable.strategyId, strategyId),
+        eq(positionsTable.assetType, "options"),
+      ),
+    );
+}
+
+/**
+ * Open a new paper options position.
+ * Allows multiple concurrent positions up to MAX_CONCURRENT_OPTIONS.
+ */
 export async function executePaperBuyOption(
   brokerId: number,
   strategyId: number,
@@ -195,21 +214,17 @@ export async function executePaperBuyOption(
     return { executed: false, contracts: 0, cost: 0, contractSymbol: contract.contractSymbol };
   }
 
-  // Only one options position per strategy at a time
-  const [existing] = await db
-    .select()
-    .from(positionsTable)
-    .where(
-      and(
-        eq(positionsTable.brokerId, brokerId),
-        eq(positionsTable.symbol, "SPY"),
-        eq(positionsTable.strategyId, strategyId),
-        eq(positionsTable.assetType, "options"),
-      ),
-    );
+  // Enforce max concurrent positions
+  const openPositions = await getAllOpenOptionsPositions(brokerId, strategyId);
+  if (openPositions.length >= MAX_CONCURRENT_OPTIONS) {
+    logger.info({ open: openPositions.length, max: MAX_CONCURRENT_OPTIONS }, "Max concurrent options positions reached — skipping");
+    return { executed: false, contracts: 0, cost: 0, contractSymbol: contract.contractSymbol };
+  }
 
-  if (existing) {
-    logger.info({ symbol: "SPY" }, "Options position already open — skipping paper buy");
+  // Don't duplicate an identical contract already held
+  const alreadyHeld = openPositions.some((p) => p.contractSymbol === contract.contractSymbol);
+  if (alreadyHeld) {
+    logger.info({ contractSymbol: contract.contractSymbol }, "Identical contract already held — skipping");
     return { executed: false, contracts: 0, cost: 0, contractSymbol: contract.contractSymbol };
   }
 
@@ -260,22 +275,16 @@ export async function executePaperBuyOption(
   return { executed: true, contracts, cost: totalCost, contractSymbol: contract.contractSymbol };
 }
 
-export async function executePaperSellOption(
+/**
+ * Close a specific open options position by its position ID.
+ * Used for per-position SL/TP checks and direction flips.
+ */
+export async function executePaperSellOptionById(
   brokerId: number,
-  strategyId: number,
+  positionId: number,
   currentPremium: number,
 ): Promise<{ executed: boolean; realizedPnl: number; realizedPnlPercent: number; contractSymbol: string }> {
-  const [position] = await db
-    .select()
-    .from(positionsTable)
-    .where(
-      and(
-        eq(positionsTable.brokerId, brokerId),
-        eq(positionsTable.symbol, "SPY"),
-        eq(positionsTable.strategyId, strategyId),
-        eq(positionsTable.assetType, "options"),
-      ),
-    );
+  const [position] = await db.select().from(positionsTable).where(eq(positionsTable.id, positionId));
 
   if (!position) {
     return { executed: false, realizedPnl: 0, realizedPnlPercent: 0, contractSymbol: "" };
@@ -286,7 +295,7 @@ export async function executePaperSellOption(
   const proceeds = contracts * currentPremium * OPTIONS_MULTIPLIER;
   const cost = contracts * entryPrice * OPTIONS_MULTIPLIER;
   const realizedPnl = proceeds - cost;
-  const realizedPnlPercent = ((currentPremium - entryPrice) / entryPrice) * 100;
+  const realizedPnlPercent = entryPrice > 0 ? ((currentPremium - entryPrice) / entryPrice) * 100 : 0;
   const contractSymbol = position.contractSymbol ?? "";
 
   const [openTrade] = await db
@@ -295,9 +304,7 @@ export async function executePaperSellOption(
     .where(
       and(
         eq(tradesTable.brokerId, brokerId),
-        eq(tradesTable.symbol, "SPY"),
-        eq(tradesTable.strategyId, strategyId),
-        eq(tradesTable.assetType, "options"),
+        eq(tradesTable.contractSymbol, contractSymbol),
         eq(tradesTable.status, "open"),
       ),
     );
@@ -315,7 +322,7 @@ export async function executePaperSellOption(
       .where(eq(tradesTable.id, openTrade.id));
   }
 
-  await db.delete(positionsTable).where(eq(positionsTable.id, position.id));
+  await db.delete(positionsTable).where(eq(positionsTable.id, positionId));
 
   const buyingPower = await getPaperBuyingPower(brokerId);
   await db
@@ -323,39 +330,8 @@ export async function executePaperSellOption(
     .set({ buyingPower: String(buyingPower + proceeds) })
     .where(eq(brokersTable.id, brokerId));
 
-  logger.info({ contractSymbol, contracts, proceeds, pnl: realizedPnl, premium: currentPremium }, "Paper SELL OPTION executed");
+  logger.info({ contractSymbol, contracts, proceeds, pnl: realizedPnl, premium: currentPremium }, "Paper SELL OPTION (by ID) executed");
   return { executed: true, realizedPnl, realizedPnlPercent, contractSymbol };
-}
-
-// ─── Options stop-loss / take-profit (on premium %) ──────────────────────
-
-export async function checkOptionsStopLossTakeProfit(
-  brokerId: number,
-  strategyId: number,
-  currentPremium: number,
-  stopLossPercent: number,
-  takeProfitPercent: number,
-): Promise<"stop_loss" | "take_profit" | null> {
-  const [position] = await db
-    .select()
-    .from(positionsTable)
-    .where(
-      and(
-        eq(positionsTable.brokerId, brokerId),
-        eq(positionsTable.symbol, "SPY"),
-        eq(positionsTable.strategyId, strategyId),
-        eq(positionsTable.assetType, "options"),
-      ),
-    );
-
-  if (!position) return null;
-
-  const entryPrice = parseFloat(position.entryPrice);
-  const changePct = ((currentPremium - entryPrice) / entryPrice) * 100;
-
-  if (changePct <= -stopLossPercent) return "stop_loss";
-  if (changePct >= takeProfitPercent) return "take_profit";
-  return null;
 }
 
 // ─── Stock stop-loss / take-profit ────────────────────────────────────────
@@ -405,7 +381,7 @@ export async function updatePaperPositionPrices(
         currentPrice: String(price),
         marketValue: String(marketValue),
         unrealizedPnl: String((price - entry) * qty * multiplier),
-        unrealizedPnlPercent: String(((price - entry) / entry) * 100),
+        unrealizedPnlPercent: String(entry > 0 ? ((price - entry) / entry) * 100 : 0),
       })
       .where(eq(positionsTable.id, pos.id));
   }

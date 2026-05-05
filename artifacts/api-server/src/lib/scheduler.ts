@@ -9,10 +9,11 @@ import {
   executePaperBuy,
   executePaperSell,
   executePaperBuyOption,
-  executePaperSellOption,
+  executePaperSellOptionById,
+  getAllOpenOptionsPositions,
   checkStopLossTakeProfit,
-  checkOptionsStopLossTakeProfit,
   updatePaperPositionPrices,
+  MAX_CONCURRENT_OPTIONS,
 } from "./paperTrading";
 
 const ET_TZ = "America/New_York";
@@ -58,7 +59,24 @@ export async function refreshSchedule() {
   logger.info({ nextStart: nextStart.toISOString(), nextStop: adjustedStop.toISOString() }, "Schedule refreshed");
 }
 
+// ─── Shared state updater ────────────────────────────────────────────────
+
+async function incrementBotCounters(tradesCount: number, pnlDelta: number) {
+  const [s] = await db.select().from(botStateTable).limit(1);
+  if (!s) return;
+  await db.update(botStateTable).set({
+    tradesExecutedToday: (s.tradesExecutedToday ?? 0) + tradesCount,
+    dailyPnl: String(parseFloat(s.dailyPnl ?? "0") + pnlDelta),
+  }).where(eq(botStateTable.id, s.id));
+}
+
 // ─── Options trading cycle ───────────────────────────────────────────────
+//
+// Supports:
+//   • Multiple concurrent positions (up to MAX_CONCURRENT_OPTIONS)
+//   • Direction flip (day trade): close opposite-side positions when trend reverses
+//   • Per-position stop-loss / take-profit checked every cycle
+//
 
 async function runOptionsCycle(
   brokerId: number,
@@ -67,6 +85,7 @@ async function runOptionsCycle(
   takeProfitPercent: number,
   maxPositionUsd: number,
 ): Promise<void> {
+  // ── 1. Fetch live SPY data ──────────────────────────────────────────────
   const data = await fetchMarketData("SPY");
   if (!data) {
     await logBot("warn", "[SKIP] SPY — could not fetch market data", "data_error", "SPY");
@@ -80,68 +99,113 @@ async function runOptionsCycle(
     data.trendCondition ? `Trend:${data.trendCondition}` : null,
   ].filter(Boolean).join(" ");
 
-  // ── Check stop-loss / take-profit on existing options position ──
-  // We need current option premium — fetch from options chain
-  const chainForSL = await fetchSpyOptionsChain(data.currentPrice);
-  if (chainForSL) {
-    // Find current premium for existing position optionType
-    const callPremium = chainForSL.call?.midPrice ?? chainForSL.call?.lastPrice ?? 0;
-    const putPremium = chainForSL.put?.midPrice ?? chainForSL.put?.lastPrice ?? 0;
-    const avgPremium = (callPremium + putPremium) / 2;
+  // ── 2. Fetch options chain (used for SL/TP prices + new entry) ──────────
+  const chain = await fetchSpyOptionsChain(data.currentPrice);
+  const callPremium = chain?.call?.midPrice ?? chain?.call?.lastPrice ?? 0;
+  const putPremium = chain?.put?.midPrice ?? chain?.put?.lastPrice ?? 0;
 
-    const trigger = await checkOptionsStopLossTakeProfit(brokerId, strategyId, avgPremium, stopLossPercent, takeProfitPercent);
+  // ── 3. Check SL/TP on every open position ──────────────────────────────
+  const openPositions = await getAllOpenOptionsPositions(brokerId, strategyId);
+
+  for (const pos of openPositions) {
+    const isCall = pos.optionType === "call" || pos.side === "long_call";
+    // Use the current ATM premium for the matching direction as a proxy price
+    const currentPremium = isCall ? callPremium : putPremium;
+
+    if (currentPremium <= 0) continue;
+
+    const entryPrice = parseFloat(pos.entryPrice);
+    const changePct = entryPrice > 0 ? ((currentPremium - entryPrice) / entryPrice) * 100 : 0;
+
+    let trigger: "stop_loss" | "take_profit" | null = null;
+    if (changePct <= -stopLossPercent) trigger = "stop_loss";
+    else if (changePct >= takeProfitPercent) trigger = "take_profit";
+
     if (trigger) {
       const label = trigger === "stop_loss" ? "STOP-LOSS" : "TAKE-PROFIT";
-      const result = await executePaperSellOption(brokerId, strategyId, avgPremium);
+      const result = await executePaperSellOptionById(brokerId, pos.id, currentPremium);
       if (result.executed) {
         const pnlStr = result.realizedPnl >= 0 ? `+$${result.realizedPnl.toFixed(2)}` : `-$${Math.abs(result.realizedPnl).toFixed(2)}`;
-        await logBot("info", `[${label}] SPY option ${result.contractSymbol} — P&L: ${pnlStr}`, "sell", "SPY");
+        await logBot("info", `[${label}] ${result.contractSymbol} closed @ $${currentPremium.toFixed(2)} — P&L: ${pnlStr}`, "sell", "SPY");
         await db.insert(activityTable).values({
           type: "trade_closed",
-          title: `${label}: SPY option closed`,
-          description: `${result.contractSymbol} closed at $${avgPremium.toFixed(2)} premium — P&L: ${pnlStr}`,
+          title: `${label}: ${isCall ? "CALL" : "PUT"} closed`,
+          description: `${result.contractSymbol} @ $${currentPremium.toFixed(2)} premium — P&L: ${pnlStr}`,
         });
-        const [s] = await db.select().from(botStateTable).limit(1);
-        if (s) {
-          await db.update(botStateTable).set({
-            tradesExecutedToday: (s.tradesExecutedToday ?? 0) + 1,
-            dailyPnl: String(parseFloat(s.dailyPnl ?? "0") + result.realizedPnl),
-          }).where(eq(botStateTable.id, s.id));
-        }
+        await incrementBotCounters(1, result.realizedPnl);
       }
-      return;
     }
   }
 
-  // ── Determine trade direction from SPY trend ──
+  // ── 4. Determine direction signal ──────────────────────────────────────
   const trend = data.trendCondition;
   const rsi = data.rsi ?? 50;
-  const rsiOk = trend === "bullish" ? rsi < 72 : rsi > 28;
 
+  // Relaxed RSI gates for day trading (72→78 / 28→22)
   let direction: "call" | "put" | null = null;
   let reason = "";
 
-  if (trend === "bullish" && rsiOk) {
+  if (trend === "bullish" && rsi < 78) {
     direction = "call";
     reason = `SPY bullish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy CALL`;
-  } else if (trend === "bearish" && rsiOk) {
+  } else if (trend === "bearish" && rsi > 22) {
     direction = "put";
     reason = `SPY bearish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy PUT`;
   } else {
-    await logBot("info", `[LIVE] SPY @ $${data.currentPrice.toFixed(2)} [${indicators}] → HOLD — ${trend === "neutral" ? "neutral trend" : `RSI extreme (${rsi.toFixed(1)})`}`, "hold", "SPY");
+    await logBot(
+      "info",
+      `[LIVE] SPY @ $${data.currentPrice.toFixed(2)} [${indicators}] → HOLD — ${trend === "neutral" ? "neutral trend" : `RSI extreme (${rsi.toFixed(1)})`}`,
+      "hold",
+      "SPY",
+    );
     return;
   }
 
-  // ── Fetch options chain and execute ──
-  const chain = await fetchSpyOptionsChain(data.currentPrice);
+  // ── 5. Direction flip — close opposite positions (day trade) ────────────
+  const oppositeType = direction === "call" ? "put" : "call";
+  const afterSlTp = await getAllOpenOptionsPositions(brokerId, strategyId);
+
+  for (const pos of afterSlTp) {
+    const posType = pos.optionType ?? (pos.side === "long_call" ? "call" : "put");
+    if (posType !== oppositeType) continue;
+
+    // Use the opposite-direction premium for the closing price
+    const closePremium = direction === "call" ? putPremium : callPremium;
+    if (closePremium <= 0) continue;
+
+    const result = await executePaperSellOptionById(brokerId, pos.id, closePremium);
+    if (result.executed) {
+      const pnlStr = result.realizedPnl >= 0 ? `+$${result.realizedPnl.toFixed(2)}` : `-$${Math.abs(result.realizedPnl).toFixed(2)}`;
+      await logBot(
+        "info",
+        `[FLIP] Closing ${oppositeType.toUpperCase()} ${result.contractSymbol} @ $${closePremium.toFixed(2)} — P&L: ${pnlStr} (trend reversed to ${direction})`,
+        "sell",
+        "SPY",
+      );
+      await db.insert(activityTable).values({
+        type: "trade_closed",
+        title: `Direction Flip: ${oppositeType.toUpperCase()} → ${direction.toUpperCase()}`,
+        description: `${result.contractSymbol} closed @ $${closePremium.toFixed(2)} — P&L: ${pnlStr}`,
+      });
+      await incrementBotCounters(1, result.realizedPnl);
+    }
+  }
+
+  // ── 6. Open a new position if below the concurrent limit ────────────────
   if (!chain) {
-    await logBot("warn", "Could not fetch SPY options chain — skipping", "data_error", "SPY");
+    await logBot("warn", "Could not fetch SPY options chain — skipping entry", "data_error", "SPY");
     return;
   }
 
   const contract = direction === "call" ? chain.call : chain.put;
   if (!contract) {
     await logBot("warn", `No ATM ${direction} found in SPY options chain`, "data_error", "SPY");
+    return;
+  }
+
+  const currentOpen = await getAllOpenOptionsPositions(brokerId, strategyId);
+  if (currentOpen.length >= MAX_CONCURRENT_OPTIONS) {
+    await logBot("info", `[SKIP] Max concurrent positions (${MAX_CONCURRENT_OPTIONS}) reached`, "hold", "SPY");
     return;
   }
 
@@ -167,10 +231,8 @@ async function runOptionsCycle(
     }
   }
 
-  // Update position price
-  if (contract.midPrice > 0) {
-    await updatePaperPositionPrices(brokerId, { SPY: contract.midPrice });
-  }
+  // Update all position prices with current market data
+  await updatePaperPositionPrices(brokerId, { SPY: contract.midPrice });
 }
 
 // ─── Stock trading cycle ─────────────────────────────────────────────────
