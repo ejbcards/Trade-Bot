@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useGetDashboardSummary, useGetBotStatus, useGetRecentActivity, useListPositions, useStartBot, useStopBot, useListBrokers, useListStrategies } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useGetBotStatus, useGetRecentActivity, useStartBot, useStopBot, useListBrokers, useListStrategies } from "@workspace/api-client-react";
+import { useLivePositions } from "@/hooks/useLivePositions";
 import { formatCurrency, formatPercent, formatShortDate } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Activity, Play, Square, TrendingUp, TrendingDown, RefreshCcw, Clock } from "lucide-react";
+import { Activity, Play, Square, TrendingUp, TrendingDown, RefreshCcw, Clock, Wifi, WifiOff } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -49,11 +50,11 @@ export default function Dashboard() {
   const { data: summary, isLoading: isLoadingSummary } = useGetDashboardSummary();
   const { data: botStatus, isLoading: isLoadingBotStatus } = useGetBotStatus();
   const { data: activity, isLoading: isLoadingActivity } = useGetRecentActivity({ limit: 10 });
-  const { data: positions, isLoading: isLoadingPositions } = useListPositions();
-  
+  const { positions, isLoading: isLoadingPositions, isConnected, dataSource, lastUpdated } = useLivePositions();
+
   const startBot = useStartBot();
   const stopBot = useStopBot();
-  
+
   const { data: brokers } = useListBrokers();
   const { data: strategies } = useListStrategies();
 
@@ -72,8 +73,8 @@ export default function Dashboard() {
           toast.success("Bot started successfully");
           setIsStartDialogOpen(false);
         },
-        onError: (error: any) => {
-          toast.error("Failed to start bot", { description: error.message });
+        onError: (error: unknown) => {
+          toast.error("Failed to start bot", { description: (error as Error).message });
         }
       }
     );
@@ -86,8 +87,8 @@ export default function Dashboard() {
         queryClient.invalidateQueries({ queryKey: ["/api/activity"] });
         toast.success("Bot stopped successfully");
       },
-      onError: (error: any) => {
-        toast.error("Failed to stop bot", { description: error.message });
+      onError: (error: unknown) => {
+        toast.error("Failed to stop bot", { description: (error as Error).message });
       }
     });
   };
@@ -144,8 +145,8 @@ export default function Dashboard() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button 
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" 
+                    <Button
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                       onClick={handleStartBot}
                       disabled={!selectedBroker || !selectedStrategy || startBot.isPending}
                       data-testid="button-confirm-start"
@@ -232,8 +233,33 @@ export default function Dashboard() {
           {/* Open Positions List */}
           <Card className="col-span-2">
             <CardHeader>
-              <CardTitle>Open Positions</CardTitle>
-              <CardDescription>Live market overview across all connected brokers</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Open Positions</CardTitle>
+                  <CardDescription>Live market overview across all connected brokers</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isConnected ? (
+                    <div className="flex items-center gap-1.5 text-xs text-emerald-500">
+                      <Wifi className="w-3.5 h-3.5" />
+                      <span className="font-medium">LIVE</span>
+                      {dataSource && (
+                        <span className="text-muted-foreground capitalize">· {dataSource}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <WifiOff className="w-3.5 h-3.5" />
+                      <span>Connecting…</span>
+                    </div>
+                  )}
+                  {lastUpdated && (
+                    <span className="text-[10px] text-muted-foreground/60">
+                      {lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true })}
+                    </span>
+                  )}
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {isLoadingPositions ? (
@@ -251,8 +277,9 @@ export default function Dashboard() {
                         <TableHead className="text-right">Strike</TableHead>
                         <TableHead className="text-right">Qty</TableHead>
                         <TableHead className="text-right">Bought</TableHead>
+                        <TableHead className="text-right">Bid / Ask</TableHead>
                         <TableHead className="text-right">Target</TableHead>
-                        <TableHead className="text-right">Current</TableHead>
+                        <TableHead className="text-right">Mark</TableHead>
                         <TableHead className="text-right">Unrealized P&L</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -266,8 +293,11 @@ export default function Dashboard() {
                         const expiryLabel = pos.expiry
                           ? new Date(pos.expiry).toLocaleDateString("en-US", { month: "short", day: "numeric" })
                           : null;
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const live = (pos as any)._live;
+
                         return (
-                          <TableRow key={pos.id}>
+                          <TableRow key={pos.id} className={isConnected ? "transition-colors" : ""}>
                             <TableCell className="font-medium">
                               <div className="flex flex-col gap-0.5">
                                 <div className="flex items-center gap-1.5">
@@ -284,6 +314,9 @@ export default function Dashboard() {
                                     <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 text-[10px] px-1 py-0">
                                       {pos.side.toUpperCase()}
                                     </Badge>
+                                  )}
+                                  {isConnected && live && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                   )}
                                 </div>
                                 {expiryLabel && (
@@ -303,11 +336,26 @@ export default function Dashboard() {
                                 </span>
                               </div>
                             </TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              {live ? (
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <span className="text-emerald-400">{formatCurrency(live.bid)}</span>
+                                  <span className="text-rose-400">{formatCurrency(live.ask)}</span>
+                                </div>
+                              ) : "—"}
+                            </TableCell>
                             <TableCell className="text-right font-mono text-amber-400">
                               {formatCurrency(targetPrice)}
                             </TableCell>
                             <TableCell className="text-right font-mono text-sm">
-                              {pos.currentPrice ? formatCurrency(pos.currentPrice) : "—"}
+                              <div className="flex flex-col items-end gap-0.5">
+                                <span>{pos.currentPrice ? formatCurrency(pos.currentPrice) : "—"}</span>
+                                {live && live.change !== 0 && (
+                                  <span className={`text-[10px] ${live.change >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                                    {live.change >= 0 ? "+" : ""}{live.change.toFixed(2)} ({live.changePercent >= 0 ? "+" : ""}{live.changePercent.toFixed(1)}%)
+                                  </span>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className={`text-right font-medium ${pos.unrealizedPnl != null && pos.unrealizedPnl >= 0 ? "text-emerald-500" : "text-destructive"}`}>
                               {pos.unrealizedPnl != null ? (
