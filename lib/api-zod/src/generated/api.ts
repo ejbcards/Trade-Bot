@@ -576,7 +576,7 @@ export const ListPositionsResponseItem = zod.object({
   brokerName: zod.string(),
   symbol: zod.string(),
   assetType: zod.string(),
-  side: zod.string().describe("long | short"),
+  side: zod.string().describe("long | short | long_call | long_put"),
   quantity: zod.number(),
   entryPrice: zod.number(),
   currentPrice: zod.number().nullish(),
@@ -585,6 +585,15 @@ export const ListPositionsResponseItem = zod.object({
   unrealizedPnlPercent: zod.number().nullish(),
   strategyId: zod.number().nullish(),
   openedAt: zod.string(),
+  optionType: zod.string().nullish().describe("call | put"),
+  contractSymbol: zod.string().nullish(),
+  strike: zod.number().nullish(),
+  expiry: zod.string().nullish(),
+  takeProfitPercent: zod
+    .number()
+    .nullish()
+    .describe("Strategy take-profit % used to compute target sell price"),
+  stopLossPercent: zod.number().nullish().describe("Strategy stop-loss %"),
 });
 export const ListPositionsResponse = zod.array(ListPositionsResponseItem);
 

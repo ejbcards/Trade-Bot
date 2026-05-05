@@ -1,10 +1,33 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, positionsTable, brokersTable } from "@workspace/db";
+import { db, positionsTable, brokersTable, strategiesTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
-function parsePosition(p: typeof positionsTable.$inferSelect & { brokerName?: string | null }) {
+function parsePosition(p: {
+  id: number;
+  brokerId: number;
+  strategyId: number | null;
+  symbol: string;
+  assetType: string;
+  side: string;
+  quantity: string;
+  entryPrice: string;
+  currentPrice: string | null;
+  marketValue: string | null;
+  unrealizedPnl: string | null;
+  unrealizedPnlPercent: string | null;
+  openedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  optionType: string | null;
+  contractSymbol: string | null;
+  strike: string | null;
+  expiry: Date | null;
+  brokerName: string | null;
+  takeProfitPercent: string | null;
+  stopLossPercent: string | null;
+}) {
   return {
     ...p,
     quantity: parseFloat(p.quantity),
@@ -13,7 +36,11 @@ function parsePosition(p: typeof positionsTable.$inferSelect & { brokerName?: st
     marketValue: p.marketValue ? parseFloat(p.marketValue) : null,
     unrealizedPnl: p.unrealizedPnl ? parseFloat(p.unrealizedPnl) : null,
     unrealizedPnlPercent: p.unrealizedPnlPercent ? parseFloat(p.unrealizedPnlPercent) : null,
+    strike: p.strike ? parseFloat(p.strike) : null,
+    expiry: p.expiry ? p.expiry.toISOString() : null,
     brokerName: p.brokerName ?? "",
+    takeProfitPercent: p.takeProfitPercent ? parseFloat(p.takeProfitPercent) : null,
+    stopLossPercent: p.stopLossPercent ? parseFloat(p.stopLossPercent) : null,
   };
 }
 
@@ -35,10 +62,17 @@ router.get("/positions", async (_req, res): Promise<void> => {
       openedAt: positionsTable.openedAt,
       createdAt: positionsTable.createdAt,
       updatedAt: positionsTable.updatedAt,
+      optionType: positionsTable.optionType,
+      contractSymbol: positionsTable.contractSymbol,
+      strike: positionsTable.strike,
+      expiry: positionsTable.expiry,
       brokerName: brokersTable.name,
+      takeProfitPercent: strategiesTable.takeProfitPercent,
+      stopLossPercent: strategiesTable.stopLossPercent,
     })
     .from(positionsTable)
-    .leftJoin(brokersTable, eq(positionsTable.brokerId, brokersTable.id));
+    .leftJoin(brokersTable, eq(positionsTable.brokerId, brokersTable.id))
+    .leftJoin(strategiesTable, eq(positionsTable.strategyId, strategiesTable.id));
 
   res.json(positions.map(parsePosition));
 });

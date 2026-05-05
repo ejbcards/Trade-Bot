@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Activity, Play, Square, TrendingUp, TrendingDown, RefreshCcw, Clock, CalendarClock } from "lucide-react";
+import { Activity, Play, Square, TrendingUp, TrendingDown, RefreshCcw, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -243,31 +243,87 @@ export default function Dashboard() {
                   <Skeleton className="h-10 w-full" />
                 </div>
               ) : positions && positions.length > 0 ? (
-                <div className="rounded-md border">
+                <div className="rounded-md border overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Symbol</TableHead>
-                        <TableHead>Side</TableHead>
+                        <TableHead>Contract</TableHead>
+                        <TableHead className="text-right">Strike</TableHead>
                         <TableHead className="text-right">Qty</TableHead>
+                        <TableHead className="text-right">Bought</TableHead>
+                        <TableHead className="text-right">Target</TableHead>
+                        <TableHead className="text-right">Current</TableHead>
                         <TableHead className="text-right">Unrealized P&L</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {positions.slice(0, 5).map((pos) => (
-                        <TableRow key={pos.id}>
-                          <TableCell className="font-medium">{pos.symbol}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={pos.side === 'long' ? 'text-emerald-500 border-emerald-500/30' : 'text-rose-500 border-rose-500/30'}>
-                              {pos.side.toUpperCase()}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">{pos.quantity}</TableCell>
-                          <TableCell className={`text-right font-medium ${pos.unrealizedPnl && pos.unrealizedPnl >= 0 ? "text-emerald-500" : "text-destructive"}`}>
-                            {pos.unrealizedPnl ? formatCurrency(pos.unrealizedPnl) : "-"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {positions.slice(0, 8).map((pos) => {
+                        const isOptions = pos.assetType === "options";
+                        const isCall = pos.side === "long_call";
+                        const isPut = pos.side === "long_put";
+                        const tp = pos.takeProfitPercent ?? 100;
+                        const targetPrice = pos.entryPrice * (1 + tp / 100);
+                        const expiryLabel = pos.expiry
+                          ? new Date(pos.expiry).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                          : null;
+                        return (
+                          <TableRow key={pos.id}>
+                            <TableCell className="font-medium">
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{pos.symbol}</span>
+                                  {isOptions && (
+                                    <Badge
+                                      variant="outline"
+                                      className={isCall ? "text-emerald-500 border-emerald-500/30 text-[10px] px-1 py-0" : "text-rose-400 border-rose-400/30 text-[10px] px-1 py-0"}
+                                    >
+                                      {isCall ? "CALL" : isPut ? "PUT" : pos.side.toUpperCase()}
+                                    </Badge>
+                                  )}
+                                  {!isOptions && (
+                                    <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 text-[10px] px-1 py-0">
+                                      {pos.side.toUpperCase()}
+                                    </Badge>
+                                  )}
+                                </div>
+                                {expiryLabel && (
+                                  <span className="text-[10px] text-muted-foreground">exp {expiryLabel}</span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {pos.strike ? `$${pos.strike.toFixed(0)}` : "—"}
+                            </TableCell>
+                            <TableCell className="text-right">{pos.quantity}</TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              <div className="flex flex-col items-end gap-0.5">
+                                <span>{formatCurrency(pos.entryPrice)}</span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {new Date(pos.openedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-amber-400">
+                              {formatCurrency(targetPrice)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm">
+                              {pos.currentPrice ? formatCurrency(pos.currentPrice) : "—"}
+                            </TableCell>
+                            <TableCell className={`text-right font-medium ${pos.unrealizedPnl != null && pos.unrealizedPnl >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                              {pos.unrealizedPnl != null ? (
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <span>{pos.unrealizedPnl >= 0 ? "+" : ""}{formatCurrency(pos.unrealizedPnl)}</span>
+                                  {pos.unrealizedPnlPercent != null && (
+                                    <span className="text-[10px] opacity-70">
+                                      {pos.unrealizedPnlPercent >= 0 ? "+" : ""}{pos.unrealizedPnlPercent.toFixed(1)}%
+                                    </span>
+                                  )}
+                                </div>
+                              ) : "—"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>

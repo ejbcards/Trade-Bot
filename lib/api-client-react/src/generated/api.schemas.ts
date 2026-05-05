@@ -215,7 +215,7 @@ export interface Position {
   brokerName: string;
   symbol: string;
   assetType: string;
-  /** long | short */
+  /** long | short | long_call | long_put */
   side: string;
   quantity: number;
   entryPrice: number;
@@ -230,6 +230,27 @@ export interface Position {
   /** @nullable */
   strategyId?: number | null;
   openedAt: string;
+  /**
+   * call | put
+   * @nullable
+   */
+  optionType?: string | null;
+  /** @nullable */
+  contractSymbol?: string | null;
+  /** @nullable */
+  strike?: number | null;
+  /** @nullable */
+  expiry?: string | null;
+  /**
+   * Strategy take-profit % used to compute target sell price
+   * @nullable
+   */
+  takeProfitPercent?: number | null;
+  /**
+   * Strategy stop-loss %
+   * @nullable
+   */
+  stopLossPercent?: number | null;
 }
 
 export interface PositionsSummary {

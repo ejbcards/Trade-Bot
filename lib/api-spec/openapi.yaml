@@ -948,7 +948,7 @@ components:
           type: string
         side:
           type: string
-          description: "long | short"
+          description: "long | short | long_call | long_put"
         quantity:
           type: number
         entryPrice:
@@ -965,6 +965,21 @@ components:
           type: ["integer", "null"]
         openedAt:
           type: string
+        optionType:
+          type: ["string", "null"]
+          description: "call | put"
+        contractSymbol:
+          type: ["string", "null"]
+        strike:
+          type: ["number", "null"]
+        expiry:
+          type: ["string", "null"]
+        takeProfitPercent:
+          type: ["number", "null"]
+          description: "Strategy take-profit % used to compute target sell price"
+        stopLossPercent:
+          type: ["number", "null"]
+          description: "Strategy stop-loss %"
       required: [id, brokerId, brokerName, symbol, assetType, side, quantity, entryPrice, openedAt]
 
     PositionsSummary:
