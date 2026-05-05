@@ -9,15 +9,29 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Wallet, Plus, Trash2, Edit2, CheckCircle2, XCircle, RefreshCcw } from "lucide-react";
+import { Wallet, Plus, Trash2, CheckCircle2, XCircle, RefreshCcw, ExternalLink, Wifi, WifiOff, AlertCircle } from "lucide-react";
+
+async function fetchSchwabAuthUrl(): Promise<string | null> {
+  const resp = await fetch("/api/schwab/auth-url");
+  if (!resp.ok) return null;
+  const data = await resp.json() as { authUrl: string };
+  return data.authUrl;
+}
+
+async function fetchSchwabStatus(): Promise<{ connected: boolean; hasRefreshToken: boolean; hasAccountId: boolean }> {
+  const resp = await fetch("/api/schwab/status");
+  if (!resp.ok) return { connected: false, hasRefreshToken: false, hasAccountId: false };
+  return resp.json();
+}
 
 export default function Brokers() {
   const queryClient = useQueryClient();
   const { data: brokers, isLoading } = useListBrokers();
-  
+
   const createBroker = useCreateBroker();
   const updateBroker = useUpdateBroker();
   const deleteBroker = useDeleteBroker();
@@ -25,6 +39,8 @@ export default function Brokers() {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", brokerType: "schwab", apiKey: "", apiSecret: "", isActive: true });
+  const [schwabConnecting, setSchwabConnecting] = useState<number | null>(null);
+  const [schwabStatus, setSchwabStatus] = useState<Record<number, { hasRefreshToken: boolean }>>({});
 
   const handleAdd = () => {
     createBroker.mutate(
@@ -36,7 +52,7 @@ export default function Brokers() {
           setIsAddOpen(false);
           setFormData({ name: "", brokerType: "schwab", apiKey: "", apiSecret: "", isActive: true });
         },
-        onError: (err: any) => toast.error("Failed to add broker", { description: err.message })
+        onError: (err: unknown) => toast.error("Failed to add broker", { description: (err as Error).message })
       }
     );
   };
@@ -53,7 +69,7 @@ export default function Brokers() {
             toast.error("Connection failed", { description: res.message });
           }
         },
-        onError: (err: any) => toast.error("Test failed", { description: err.message })
+        onError: (err: unknown) => toast.error("Test failed", { description: (err as Error).message })
       }
     );
   };
@@ -67,7 +83,7 @@ export default function Brokers() {
           queryClient.invalidateQueries({ queryKey: ["/api/brokers"] });
           toast.success("Broker removed");
         },
-        onError: (err: any) => toast.error("Failed to remove broker", { description: err.message })
+        onError: (err: unknown) => toast.error("Failed to remove broker", { description: (err as Error).message })
       }
     );
   };
@@ -84,6 +100,57 @@ export default function Brokers() {
     );
   };
 
+  const handleConnectSchwabOAuth = async (brokerId: number) => {
+    setSchwabConnecting(brokerId);
+    try {
+      const url = await fetchSchwabAuthUrl();
+      if (!url) {
+        toast.error("Could not get Schwab authorization URL");
+        return;
+      }
+
+      // Open the Schwab authorization page in a new tab
+      const popup = window.open(url, "_blank", "width=700,height=700,scrollbars=yes");
+
+      // Poll until the popup closes (user finished OAuth) then re-check status
+      const poll = setInterval(async () => {
+        if (!popup || popup.closed) {
+          clearInterval(poll);
+          setSchwabConnecting(null);
+
+          // Check if tokens were stored
+          const status = await fetchSchwabStatus();
+          setSchwabStatus(prev => ({ ...prev, [brokerId]: status }));
+
+          if (status.hasRefreshToken) {
+            toast.success("Schwab connected!", {
+              description: "Live quotes will now stream directly from Schwab's Market Data API.",
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/brokers"] });
+          } else {
+            toast.error("Schwab authorization incomplete", {
+              description: "Please try again and complete the authorization in the popup.",
+            });
+          }
+        }
+      }, 1000);
+
+    } catch {
+      toast.error("Failed to initiate Schwab authorization");
+      setSchwabConnecting(null);
+    }
+  };
+
+  const handleCheckSchwabStatus = async (brokerId: number) => {
+    const status = await fetchSchwabStatus();
+    setSchwabStatus(prev => ({ ...prev, [brokerId]: status }));
+    if (status.hasRefreshToken) {
+      toast.success("Schwab OAuth tokens are active — live data streaming from Schwab");
+    } else {
+      toast.info("No Schwab OAuth tokens yet — click 'Connect with Schwab' to authorize");
+    }
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -92,7 +159,7 @@ export default function Brokers() {
             <h1 className="text-3xl font-bold tracking-tight">Broker Connections</h1>
             <p className="text-muted-foreground mt-1">Manage your exchange integrations and API keys.</p>
           </div>
-          
+
           <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -107,18 +174,16 @@ export default function Brokers() {
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>Connection Name</Label>
-                  <Input 
-                    value={formData.name} 
-                    onChange={e => setFormData({...formData, name: e.target.value})} 
-                    placeholder="e.g., Main Schwab Account" 
+                  <Input
+                    value={formData.name}
+                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="e.g., Main Schwab Account"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Broker Type</Label>
-                  <Select value={formData.brokerType} onValueChange={v => setFormData({...formData, brokerType: v})}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Select value={formData.brokerType} onValueChange={v => setFormData({ ...formData, brokerType: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="schwab">Charles Schwab</SelectItem>
                       <SelectItem value="robinhood">Robinhood</SelectItem>
@@ -129,26 +194,15 @@ export default function Brokers() {
                 </div>
                 <div className="space-y-2">
                   <Label>API Key</Label>
-                  <Input 
-                    type="password"
-                    value={formData.apiKey} 
-                    onChange={e => setFormData({...formData, apiKey: e.target.value})} 
-                  />
+                  <Input type="password" value={formData.apiKey} onChange={e => setFormData({ ...formData, apiKey: e.target.value })} />
                 </div>
                 <div className="space-y-2">
                   <Label>API Secret</Label>
-                  <Input 
-                    type="password"
-                    value={formData.apiSecret} 
-                    onChange={e => setFormData({...formData, apiSecret: e.target.value})} 
-                  />
+                  <Input type="password" value={formData.apiSecret} onChange={e => setFormData({ ...formData, apiSecret: e.target.value })} />
                 </div>
                 <div className="flex items-center justify-between pt-2">
                   <Label>Enable Connection Immediately</Label>
-                  <Switch 
-                    checked={formData.isActive} 
-                    onCheckedChange={c => setFormData({...formData, isActive: c})} 
-                  />
+                  <Switch checked={formData.isActive} onCheckedChange={c => setFormData({ ...formData, isActive: c })} />
                 </div>
               </div>
               <DialogFooter>
@@ -169,69 +223,140 @@ export default function Brokers() {
           </div>
         ) : brokers && brokers.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {brokers.map(broker => (
-              <Card key={broker.id} className={!broker.isActive ? "opacity-70" : ""}>
-                <CardHeader className="pb-3">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                        <Wallet className="w-5 h-5" />
+            {brokers.map(broker => {
+              const isSchwab = broker.brokerType === "schwab";
+              const liveStatus = schwabStatus[broker.id];
+              const hasOAuth = liveStatus?.hasRefreshToken ?? false;
+              const isConnectingThis = schwabConnecting === broker.id;
+
+              return (
+                <Card key={broker.id} className={!broker.isActive ? "opacity-70" : ""}>
+                  <CardHeader className="pb-3">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                          <Wallet className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg">{broker.name}</CardTitle>
+                          <CardDescription className="capitalize">{broker.brokerType.replace("_", " ")}</CardDescription>
+                        </div>
                       </div>
-                      <div>
-                        <CardTitle className="text-lg">{broker.name}</CardTitle>
-                        <CardDescription className="capitalize">{broker.brokerType.replace('_', ' ')}</CardDescription>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch 
-                        checked={broker.isActive} 
-                        onCheckedChange={() => handleToggleActive(broker.id, broker.isActive)} 
+                      <Switch
+                        checked={broker.isActive}
+                        onCheckedChange={() => handleToggleActive(broker.id, broker.isActive)}
                         title="Toggle active status"
                       />
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-lg border">
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Account Value</p>
-                      <p className="text-lg font-semibold text-foreground">{formatCurrency(broker.accountValue || 0)}</p>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-lg border">
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Account Value</p>
+                        <p className="text-lg font-semibold">{formatCurrency(broker.accountValue || 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Buying Power</p>
+                        <p className="text-lg font-semibold">{formatCurrency(broker.buyingPower || 0)}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Buying Power</p>
-                      <p className="text-lg font-semibold text-foreground">{formatCurrency(broker.buyingPower || 0)}</p>
+
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Status</span>
+                      {broker.status === "connected" ? (
+                        <span className="flex items-center text-emerald-500 font-medium">
+                          <CheckCircle2 className="w-4 h-4 mr-1" /> Connected
+                        </span>
+                      ) : broker.status === "error" ? (
+                        <span className="flex items-center text-destructive font-medium">
+                          <XCircle className="w-4 h-4 mr-1" /> Error
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Disconnected</span>
+                      )}
                     </div>
-                  </div>
-                  
-                  <div className="mt-4 flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Status</span>
-                    {broker.status === 'connected' ? (
-                      <span className="flex items-center text-emerald-500 font-medium">
-                        <CheckCircle2 className="w-4 h-4 mr-1" /> Connected
-                      </span>
-                    ) : broker.status === 'error' ? (
-                      <span className="flex items-center text-destructive font-medium">
-                        <XCircle className="w-4 h-4 mr-1" /> Error
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">Disconnected</span>
+
+                    {/* Schwab OAuth section */}
+                    {isSchwab && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground font-medium">Live Market Data</span>
+                          {hasOAuth ? (
+                            <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30 gap-1">
+                              <Wifi className="w-3 h-3" /> Schwab Live
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-amber-500 border-amber-500/30 gap-1">
+                              <WifiOff className="w-3 h-3" /> Not authorized
+                            </Badge>
+                          )}
+                        </div>
+
+                        {!hasOAuth && (
+                          <div className="flex items-start gap-2 text-xs text-muted-foreground bg-amber-500/5 border border-amber-500/20 rounded-md p-2">
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                            <span>Authorize with Schwab to stream real-time bid/ask quotes directly from their Market Data API.</span>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className={hasOAuth
+                              ? "flex-1 bg-emerald-600/20 text-emerald-500 hover:bg-emerald-600/30 border border-emerald-500/30"
+                              : "flex-1 bg-amber-600 hover:bg-amber-700 text-white"
+                            }
+                            onClick={() => handleConnectSchwabOAuth(broker.id)}
+                            disabled={isConnectingThis}
+                          >
+                            {isConnectingThis ? (
+                              <><RefreshCcw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Waiting…</>
+                            ) : hasOAuth ? (
+                              <><RefreshCcw className="w-3.5 h-3.5 mr-1.5" /> Re-authorize</>
+                            ) : (
+                              <><ExternalLink className="w-3.5 h-3.5 mr-1.5" /> Connect with Schwab</>
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleCheckSchwabStatus(broker.id)}
+                            title="Check OAuth status"
+                          >
+                            <RefreshCcw className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
                     )}
-                  </div>
-                </CardContent>
-                <CardFooter className="pt-0 flex gap-2 border-t mt-4 py-3">
-                  <Button variant="outline" size="sm" className="flex-1" onClick={() => handleTest(broker.id)} disabled={testConnection.isPending && testConnection.variables?.id === broker.id}>
-                    {testConnection.isPending && testConnection.variables?.id === broker.id ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
-                    Test
-                  </Button>
-                  <Button variant="outline" size="sm" className="px-3" disabled>
-                    <Edit2 className="w-4 h-4" />
-                  </Button>
-                  <Button variant="outline" size="sm" className="px-3 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(broker.id)} disabled={deleteBroker.isPending}>
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
+                  </CardContent>
+
+                  <CardFooter className="pt-0 flex gap-2 border-t mt-2 py-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleTest(broker.id)}
+                      disabled={testConnection.isPending && testConnection.variables?.id === broker.id}
+                    >
+                      {testConnection.isPending && testConnection.variables?.id === broker.id
+                        ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" />
+                        : <RefreshCcw className="w-4 h-4 mr-2" />}
+                      Test Connection
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="px-3 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => handleDelete(broker.id)}
+                      disabled={deleteBroker.isPending}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </CardFooter>
+                </Card>
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-20 border border-dashed rounded-xl bg-muted/10">
