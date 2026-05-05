@@ -50,7 +50,7 @@ export default function Dashboard() {
   const { data: summary, isLoading: isLoadingSummary } = useGetDashboardSummary();
   const { data: botStatus, isLoading: isLoadingBotStatus } = useGetBotStatus();
   const { data: activity, isLoading: isLoadingActivity } = useGetRecentActivity({ limit: 10 });
-  const { positions, isLoading: isLoadingPositions, isConnected, dataSource, lastUpdated } = useLivePositions();
+  const { positions, isLoading: isLoadingPositions, isConnected, dataSource, lastUpdated, totalLiveUnrealizedPnl } = useLivePositions();
 
   const startBot = useStartBot();
   const stopBot = useStopBot();
@@ -201,10 +201,10 @@ export default function Dashboard() {
                 <Badge variant="outline" className="font-normal">{summary.totalOpenPositions} active</Badge>
               </CardHeader>
               <CardContent>
-                <div className={`text-2xl font-bold ${summary.totalUnrealizedPnl >= 0 ? "text-emerald-500" : "text-destructive"}`} data-testid="text-unrealized-pnl">
-                  {summary.totalUnrealizedPnl >= 0 ? "+" : ""}{formatCurrency(summary.totalUnrealizedPnl)}
+                <div className={`text-2xl font-bold ${(totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl) >= 0 ? "text-emerald-500" : "text-destructive"}`} data-testid="text-unrealized-pnl">
+                  {(totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl) >= 0 ? "+" : ""}{formatCurrency(totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl)}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Unrealized P&L</p>
+                <p className="text-xs text-muted-foreground mt-1">Unrealized P&L {totalLiveUnrealizedPnl !== null && <span className="text-emerald-500/70">· live</span>}</p>
               </CardContent>
             </Card>
             <Card className={botStatus?.isRunning ? "border-emerald-500/50 bg-emerald-500/5" : "border-amber-500/20 bg-amber-500/5"}>

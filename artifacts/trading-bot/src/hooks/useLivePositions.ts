@@ -79,12 +79,23 @@ export function useLivePositions() {
     };
   });
 
+  // Live-accurate totals — always prefer stream values over stale DB aggregates
+  const hasLiveData = Object.keys(liveUpdates).length > 0;
+  const totalLiveUnrealizedPnl = hasLiveData
+    ? positions.reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0)
+    : null;
+  const totalLiveMarketValue = hasLiveData
+    ? positions.reduce((sum, p) => sum + (p.marketValue ?? 0), 0)
+    : null;
+
   return {
     positions,
     isLoading,
     isConnected,
     dataSource,
     lastUpdated,
+    totalLiveUnrealizedPnl,
+    totalLiveMarketValue,
     getLive: (posId: number) => liveUpdates[posId] ?? null,
   };
 }
