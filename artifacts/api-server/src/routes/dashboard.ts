@@ -32,8 +32,16 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const totalUnrealizedPnl = positions.reduce((sum, p) => sum + parsePnl(p.unrealizedPnl), 0);
 
   const todayClosedTrades = recentTrades.filter((t) => t.status === "closed");
-  const dailyPnl = todayClosedTrades.reduce((sum, t) => sum + parsePnl(t.realizedPnl), 0);
+  const dailyRealizedPnl = todayClosedTrades.reduce((sum, t) => sum + parsePnl(t.realizedPnl), 0);
+  const dailyPnl = dailyRealizedPnl + totalUnrealizedPnl;
   const dailyPnlPercent = totalAccountValue > 0 ? (dailyPnl / totalAccountValue) * 100 : 0;
+
+  const totalInvested = positions.reduce((sum, p) => {
+    const entry = parseFloat(p.entryPrice);
+    const qty = parseFloat(p.quantity);
+    const multiplier = p.assetType === "options" ? 100 : 1;
+    return sum + entry * qty * multiplier;
+  }, 0);
 
   const weekClosed = weeklyTrades.filter((t) => t.status === "closed");
   const weeklyPnl = weekClosed.reduce((sum, t) => sum + parsePnl(t.realizedPnl), 0);
@@ -61,6 +69,8 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     botRunning: state?.isRunning ?? false,
     tradesExecutedToday: recentTrades.length,
     winRateAllTime,
+    totalInvested,
+    dailyRealizedPnl,
   });
 });
 

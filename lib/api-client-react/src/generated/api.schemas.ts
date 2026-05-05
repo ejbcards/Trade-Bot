@@ -552,6 +552,10 @@ export interface DashboardSummary {
   botRunning: boolean;
   tradesExecutedToday: number;
   winRateAllTime: number;
+  /** Total cost basis of all currently open positions */
+  totalInvested: number;
+  /** Realized P&L from trades closed today */
+  dailyRealizedPnl: number;
 }
 
 export interface ActivityItem {

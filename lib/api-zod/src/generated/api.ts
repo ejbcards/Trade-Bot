@@ -774,6 +774,12 @@ export const GetDashboardSummaryResponse = zod.object({
   botRunning: zod.boolean(),
   tradesExecutedToday: zod.number(),
   winRateAllTime: zod.number(),
+  totalInvested: zod
+    .number()
+    .describe("Total cost basis of all currently open positions"),
+  dailyRealizedPnl: zod
+    .number()
+    .describe("Realized P&L from trades closed today"),
 });
 
 /**

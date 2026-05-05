@@ -1365,7 +1365,13 @@ components:
           type: integer
         winRateAllTime:
           type: number
-      required: [totalAccountValue, totalBuyingPower, dailyPnl, dailyPnlPercent, weeklyPnl, monthlyPnl, totalOpenPositions, totalUnrealizedPnl, activeBrokers, activeStrategies, botRunning, tradesExecutedToday, winRateAllTime]
+        totalInvested:
+          type: number
+          description: "Total cost basis of all currently open positions"
+        dailyRealizedPnl:
+          type: number
+          description: "Realized P&L from trades closed today"
+      required: [totalAccountValue, totalBuyingPower, dailyPnl, dailyPnlPercent, weeklyPnl, monthlyPnl, totalOpenPositions, totalUnrealizedPnl, activeBrokers, activeStrategies, botRunning, tradesExecutedToday, winRateAllTime, totalInvested, dailyRealizedPnl]
 
     ActivityItem:
       type: object

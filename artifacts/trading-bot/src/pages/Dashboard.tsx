@@ -163,71 +163,106 @@ export default function Dashboard() {
 
         {/* Top Summary Cards */}
         {isLoadingSummary ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-32 rounded-xl" />
             ))}
           </div>
-        ) : summary ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Account Value</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold" data-testid="text-account-value">{formatCurrency(summary.totalAccountValue)}</div>
-                <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">Buying Power:</span> {formatCurrency(summary.totalBuyingPower)}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Daily P&L</CardTitle>
-                {summary.dailyPnl >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-500" /> : <TrendingDown className="w-4 h-4 text-destructive" />}
-              </CardHeader>
-              <CardContent>
-                <div className={`text-2xl font-bold ${summary.dailyPnl >= 0 ? "text-emerald-500" : "text-destructive"}`} data-testid="text-daily-pnl">
-                  {summary.dailyPnl >= 0 ? "+" : ""}{formatCurrency(summary.dailyPnl)}
-                </div>
-                <p className={`text-xs mt-1 ${summary.dailyPnlPercent >= 0 ? "text-emerald-500/80" : "text-destructive/80"}`}>
-                  {summary.dailyPnlPercent >= 0 ? "+" : ""}{formatPercent(summary.dailyPnlPercent)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Open Positions</CardTitle>
-                <Badge variant="outline" className="font-normal">{summary.totalOpenPositions} active</Badge>
-              </CardHeader>
-              <CardContent>
-                <div className={`text-2xl font-bold ${(totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl) >= 0 ? "text-emerald-500" : "text-destructive"}`} data-testid="text-unrealized-pnl">
-                  {(totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl) >= 0 ? "+" : ""}{formatCurrency(totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Unrealized P&L {totalLiveUnrealizedPnl !== null && <span className="text-emerald-500/70">· live</span>}</p>
-              </CardContent>
-            </Card>
-            <Card className={botStatus?.isRunning ? "border-emerald-500/50 bg-emerald-500/5" : "border-amber-500/20 bg-amber-500/5"}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">System Status</CardTitle>
-                <div className={`w-2.5 h-2.5 rounded-full ${botStatus?.isRunning ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" : "bg-amber-500"}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{botStatus?.isRunning ? "Running" : "Scheduled"}</div>
-                {botStatus?.isRunning ? (
+        ) : summary ? (() => {
+          // Live daily P&L = realized closed trades today + live unrealized on open positions
+          const liveDailyPnl = summary.dailyRealizedPnl + (totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl);
+          const liveDailyPnlPercent = summary.totalAccountValue > 0 ? (liveDailyPnl / summary.totalAccountValue) * 100 : 0;
+          const liveReturn = summary.totalInvested > 0 ? ((totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl) / summary.totalInvested) * 100 : 0;
+          const isLive = totalLiveUnrealizedPnl !== null;
+
+          return (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+              {/* Account Value */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Account Value</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="text-account-value">{formatCurrency(summary.totalAccountValue)}</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    <span className="font-medium text-foreground">Buying Power:</span> {formatCurrency(summary.totalBuyingPower)}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Daily P&L — live */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Daily P&L</CardTitle>
+                  {liveDailyPnl >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-500" /> : <TrendingDown className="w-4 h-4 text-destructive" />}
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-2xl font-bold ${liveDailyPnl >= 0 ? "text-emerald-500" : "text-destructive"}`} data-testid="text-daily-pnl">
+                    {liveDailyPnl >= 0 ? "+" : ""}{formatCurrency(liveDailyPnl)}
+                  </div>
+                  <p className={`text-xs mt-1 flex items-center gap-1 ${liveDailyPnlPercent >= 0 ? "text-emerald-500/80" : "text-destructive/80"}`}>
+                    {liveDailyPnlPercent >= 0 ? "+" : ""}{formatPercent(liveDailyPnlPercent)}
+                    {isLive && <span className="text-emerald-500/60 ml-1">· live</span>}
+                  </p>
+                  {summary.dailyRealizedPnl !== 0 && (
+                    <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                      {formatCurrency(summary.dailyRealizedPnl)} realized · {formatCurrency(totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl)} unrealized
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Today Invested */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Today Invested</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(summary.totalInvested)}</div>
+                  <p className={`text-xs mt-1 ${liveReturn >= 0 ? "text-emerald-500/80" : "text-destructive/80"}`}>
+                    {liveReturn >= 0 ? "+" : ""}{formatPercent(liveReturn)} return
+                    {isLive && <span className="text-emerald-500/60 ml-1">· live</span>}
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Open Positions */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Open Positions</CardTitle>
+                  <Badge variant="outline" className="font-normal">{summary.totalOpenPositions} active</Badge>
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-2xl font-bold ${(totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl) >= 0 ? "text-emerald-500" : "text-destructive"}`} data-testid="text-unrealized-pnl">
+                    {(totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl) >= 0 ? "+" : ""}{formatCurrency(totalLiveUnrealizedPnl ?? summary.totalUnrealizedPnl)}
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {summary.tradesExecutedToday} trades executed today
+                    Unrealized P&L{isLive && <span className="text-emerald-500/70"> · live</span>}
                   </p>
-                ) : (
-                  <p className="text-xs text-amber-400/90 mt-1 flex items-center gap-1">
-                    <Clock className="w-3 h-3 inline" />
-                    Starts {formatScheduledTime(botStatus?.scheduledStartAt)}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        ) : null}
+                </CardContent>
+              </Card>
+
+              {/* System Status */}
+              <Card className={botStatus?.isRunning ? "border-emerald-500/50 bg-emerald-500/5" : "border-amber-500/20 bg-amber-500/5"}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">System Status</CardTitle>
+                  <div className={`w-2.5 h-2.5 rounded-full ${botStatus?.isRunning ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" : "bg-amber-500"}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{botStatus?.isRunning ? "Running" : "Scheduled"}</div>
+                  {botStatus?.isRunning ? (
+                    <p className="text-xs text-muted-foreground mt-1">{summary.tradesExecutedToday} trades today</p>
+                  ) : (
+                    <p className="text-xs text-amber-400/90 mt-1 flex items-center gap-1">
+                      <Clock className="w-3 h-3 inline" />
+                      Starts {formatScheduledTime(botStatus?.scheduledStartAt)}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })() : null}
 
         <div className="grid gap-6 md:grid-cols-3">
           {/* Open Positions List */}
