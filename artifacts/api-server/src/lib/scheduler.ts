@@ -160,17 +160,20 @@ async function runOptionsCycle(
     let exitReason = "";
 
     if (isCall && trend === "bearish") {
+      // Trend flipped against us — primary exit signal
       exitTrigger = "SIGNAL-FLIP";
       exitReason = `trend turned bearish (RSI:${rsi.toFixed(1)}, MA:${data.maCondition})`;
-    } else if (isCall && rsi >= rsiOverbought) {
+    } else if (isCall && trend !== "bullish" && rsi >= rsiOverbought) {
+      // Trend lost conviction AND RSI is truly extreme — secondary exit
+      // (if trend is still bullish, high RSI is momentum, not exhaustion)
       exitTrigger = "RSI-EXTREME";
-      exitReason = `RSI overbought at ${rsi.toFixed(1)} — momentum exhausted`;
+      exitReason = `RSI overbought at ${rsi.toFixed(1)} with ${trend} trend — momentum exhausted`;
     } else if (!isCall && trend === "bullish") {
       exitTrigger = "SIGNAL-FLIP";
       exitReason = `trend turned bullish (RSI:${rsi.toFixed(1)}, MA:${data.maCondition})`;
-    } else if (!isCall && rsi <= rsiOversold) {
+    } else if (!isCall && trend !== "bearish" && rsi <= rsiOversold) {
       exitTrigger = "RSI-EXTREME";
-      exitReason = `RSI oversold at ${rsi.toFixed(1)} — momentum exhausted`;
+      exitReason = `RSI oversold at ${rsi.toFixed(1)} with ${trend} trend — momentum exhausted`;
     }
 
     // B) Fixed take profit
