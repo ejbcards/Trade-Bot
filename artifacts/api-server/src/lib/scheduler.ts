@@ -408,7 +408,7 @@ export function startScheduler() {
     await refreshSchedule();
   }, { timezone: ET_TZ });
 
-  cron.schedule("*/5 * * * 1-5", async () => {
+  cron.schedule("*/30 * * * * 1-5", async () => {
     const nowET = new Date(new Date().toLocaleString("en-US", { timeZone: ET_TZ }));
     const h = nowET.getHours();
     const m = nowET.getMinutes();
