@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { db, botStateTable, botLogsTable, activityTable, strategiesTable, decisionRulesTable } from "@workspace/db";
+import { db, botStateTable, botLogsTable, activityTable, strategiesTable, decisionRulesTable, brokersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { evaluateDecisionTable } from "./decisionEngine";
@@ -16,6 +16,7 @@ import {
   updatePaperPositionPrices,
   MAX_CONCURRENT_OPTIONS,
 } from "./paperTrading";
+import { executeAlpacaBuyOption, executeAlpacaSellOptionById } from "./alpacaBroker";
 
 const ET_TZ = "America/New_York";
 
@@ -86,6 +87,10 @@ async function runOptionsCycle(
   takeProfitPercent: number,
   maxPositionUsd: number,
 ): Promise<void> {
+  // ── 0. Resolve broker — detect Alpaca to route orders accordingly ───────
+  const [activeBroker] = await db.select().from(brokersTable).where(eq(brokersTable.id, brokerId));
+  const isAlpaca = activeBroker?.brokerType === "alpaca" && !!activeBroker.apiKey && !!activeBroker.apiSecret;
+
   // ── 1. Fetch live SPY data ──────────────────────────────────────────────
   const data = await fetchMarketData("SPY");
   if (!data) {
@@ -137,7 +142,9 @@ async function runOptionsCycle(
 
     if (trigger) {
       const label = trigger === "stop_loss" ? "STOP-LOSS" : "TAKE-PROFIT";
-      const result = await executePaperSellOptionById(brokerId, pos.id, currentPremium);
+      const result = isAlpaca
+        ? await executeAlpacaSellOptionById(activeBroker, pos.id, currentPremium)
+        : await executePaperSellOptionById(brokerId, pos.id, currentPremium);
       if (result.executed) {
         const pnlStr = result.realizedPnl >= 0 ? `+$${result.realizedPnl.toFixed(2)}` : `-$${Math.abs(result.realizedPnl).toFixed(2)}`;
         await logBot("info", `[${label}] ${result.contractSymbol} closed @ $${currentPremium.toFixed(2)} — P&L: ${pnlStr}`, "sell", "SPY");
@@ -187,7 +194,9 @@ async function runOptionsCycle(
     const closePremium = direction === "call" ? putPremium : callPremium;
     if (closePremium <= 0) continue;
 
-    const result = await executePaperSellOptionById(brokerId, pos.id, closePremium);
+    const result = isAlpaca
+      ? await executeAlpacaSellOptionById(activeBroker, pos.id, closePremium)
+      : await executePaperSellOptionById(brokerId, pos.id, closePremium);
     if (result.executed) {
       const pnlStr = result.realizedPnl >= 0 ? `+$${result.realizedPnl.toFixed(2)}` : `-$${Math.abs(result.realizedPnl).toFixed(2)}`;
       await logBot(
@@ -224,11 +233,14 @@ async function runOptionsCycle(
   }
 
   const contractsToTrade = Math.max(1, Math.floor(maxPositionUsd / (contract.midPrice * 100)));
-  const r = await executePaperBuyOption(brokerId, strategyId, contract, contractsToTrade);
+  const r = isAlpaca
+    ? await executeAlpacaBuyOption(activeBroker, strategyId, contract, contractsToTrade)
+    : await executePaperBuyOption(brokerId, strategyId, contract, contractsToTrade);
 
+  const brokerLabel = isAlpaca ? "Alpaca" : "Paper";
   await logBot(
     "info",
-    `[LIVE] SPY @ $${data.currentPrice.toFixed(2)} [${indicators}] → BUY ${direction.toUpperCase()} ${contract.contractSymbol} @ $${contract.midPrice.toFixed(2)} — ${reason}`,
+    `[${brokerLabel.toUpperCase()}] SPY @ $${data.currentPrice.toFixed(2)} [${indicators}] → BUY ${direction.toUpperCase()} ${contract.contractSymbol} @ $${contract.midPrice.toFixed(2)} — ${reason}`,
     "buy",
     "SPY",
   );
@@ -236,7 +248,7 @@ async function runOptionsCycle(
   if (r.executed) {
     await db.insert(activityTable).values({
       type: "trade_opened",
-      title: `Paper BUY ${direction.toUpperCase()}: SPY`,
+      title: `${brokerLabel} BUY ${direction.toUpperCase()}: SPY`,
       description: `${r.contracts}x ${contract.contractSymbol} @ $${contract.midPrice.toFixed(2)} premium (cost $${r.cost.toFixed(2)}) — strike $${contract.strike}, exp ${contract.expiry.toISOString().slice(0, 10)}`,
     });
     const [s] = await db.select().from(botStateTable).limit(1);

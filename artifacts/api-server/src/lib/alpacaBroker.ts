@@ -1,4 +1,9 @@
+import { db, brokersTable, tradesTable, positionsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
+import type { OptionsContract } from "./marketData";
+
+const OPTIONS_MULTIPLIER = 100;
 
 const ALPACA_PAPER_BASE = "https://paper-api.alpaca.markets";
 const ALPACA_LIVE_BASE = "https://api.alpaca.markets";
@@ -157,4 +162,163 @@ export async function placeAlpacaOrder(opts: {
   const order = await resp.json() as any;
   logger.info({ orderId: order.id, symbol: opts.symbol, side: opts.side }, "Alpaca order placed");
   return { success: true, orderId: order.id };
+}
+
+// ─── Alpaca Options Execution (buy + sell with DB tracking) ──────────────────
+
+type AlpacaBrokerRecord = { id: number; apiKey: string | null; apiSecret: string | null; accountId: string | null };
+
+function alpacaIsPaper(broker: AlpacaBrokerRecord): boolean {
+  return !broker.accountId || broker.accountId.startsWith("paper");
+}
+
+/**
+ * Place a real options buy order on Alpaca and track the position in our DB.
+ * Mirrors executePaperBuyOption but routes through the Alpaca API.
+ */
+export async function executeAlpacaBuyOption(
+  broker: AlpacaBrokerRecord,
+  strategyId: number,
+  contract: OptionsContract,
+  contracts = 1,
+): Promise<{ executed: boolean; contracts: number; cost: number; contractSymbol: string; orderId?: string }> {
+  const apiKey = broker.apiKey ?? "";
+  const apiSecret = broker.apiSecret ?? "";
+  const isPaper = alpacaIsPaper(broker);
+
+  const premiumPerShare = contract.midPrice > 0 ? contract.midPrice : contract.lastPrice;
+  const totalCost = premiumPerShare * OPTIONS_MULTIPLIER * contracts;
+
+  if (totalCost < 1) {
+    logger.warn({ contract: contract.contractSymbol }, "Alpaca: option price too low — skipping");
+    return { executed: false, contracts: 0, cost: 0, contractSymbol: contract.contractSymbol };
+  }
+
+  // Check buying power from Alpaca account
+  const account = await getAlpacaAccount(apiKey, apiSecret, isPaper);
+  if (!account || account.buyingPower < totalCost) {
+    logger.info({ totalCost, buyingPower: account?.buyingPower }, "Alpaca: insufficient buying power for option");
+    return { executed: false, contracts: 0, cost: 0, contractSymbol: contract.contractSymbol };
+  }
+
+  // Don't duplicate a contract already held in our DB
+  const [alreadyHeld] = await db
+    .select()
+    .from(positionsTable)
+    .where(and(eq(positionsTable.brokerId, broker.id), eq(positionsTable.contractSymbol, contract.contractSymbol)));
+  if (alreadyHeld) {
+    logger.info({ contractSymbol: contract.contractSymbol }, "Alpaca: contract already held — skipping");
+    return { executed: false, contracts: 0, cost: 0, contractSymbol: contract.contractSymbol };
+  }
+
+  // Place the order on Alpaca
+  const order = await placeAlpacaOrder({ apiKey, apiSecret, isPaper, symbol: contract.contractSymbol, qty: contracts, side: "buy", orderType: "market" });
+  if (!order.success) {
+    logger.error({ contract: contract.contractSymbol, error: order.error }, "Alpaca buy order failed");
+    return { executed: false, contracts: 0, cost: 0, contractSymbol: contract.contractSymbol };
+  }
+
+  // Track in our DB (same shape as paper trading)
+  await db.insert(tradesTable).values({
+    brokerId: broker.id,
+    strategyId,
+    symbol: "SPY",
+    assetType: "options",
+    side: "buy",
+    quantity: String(contracts),
+    entryPrice: String(premiumPerShare),
+    status: "open",
+    optionType: contract.optionType,
+    contractSymbol: contract.contractSymbol,
+    strike: String(contract.strike),
+    expiry: contract.expiry,
+    notes: `Alpaca ${isPaper ? "paper" : "live"} order ${order.orderId} — ${contract.optionType.toUpperCase()} $${contract.strike} exp ${contract.expiry.toISOString().slice(0, 10)}`,
+    openedAt: new Date(),
+  });
+
+  await db.insert(positionsTable).values({
+    brokerId: broker.id,
+    strategyId,
+    symbol: "SPY",
+    assetType: "options",
+    side: contract.optionType === "call" ? "long_call" : "long_put",
+    quantity: String(contracts),
+    entryPrice: String(premiumPerShare),
+    currentPrice: String(premiumPerShare),
+    marketValue: String(totalCost),
+    unrealizedPnl: "0",
+    unrealizedPnlPercent: "0",
+    optionType: contract.optionType,
+    contractSymbol: contract.contractSymbol,
+    strike: String(contract.strike),
+    expiry: contract.expiry,
+  });
+
+  // Refresh account data in DB from Alpaca
+  const fresh = await getAlpacaAccount(apiKey, apiSecret, isPaper);
+  if (fresh) {
+    await db.update(brokersTable)
+      .set({ buyingPower: String(fresh.buyingPower), accountValue: String(fresh.equity) })
+      .where(eq(brokersTable.id, broker.id));
+  }
+
+  logger.info({ contractSymbol: contract.contractSymbol, contracts, totalCost, orderId: order.orderId }, "Alpaca BUY OPTION executed");
+  return { executed: true, contracts, cost: totalCost, contractSymbol: contract.contractSymbol, orderId: order.orderId };
+}
+
+/**
+ * Close an open options position by DB position ID via a real Alpaca sell order.
+ * Mirrors executePaperSellOptionById but routes through the Alpaca API.
+ */
+export async function executeAlpacaSellOptionById(
+  broker: AlpacaBrokerRecord,
+  positionId: number,
+  currentPremium: number,
+): Promise<{ executed: boolean; realizedPnl: number; realizedPnlPercent: number; contractSymbol: string }> {
+  const apiKey = broker.apiKey ?? "";
+  const apiSecret = broker.apiSecret ?? "";
+  const isPaper = alpacaIsPaper(broker);
+
+  const [position] = await db.select().from(positionsTable).where(eq(positionsTable.id, positionId));
+  if (!position) return { executed: false, realizedPnl: 0, realizedPnlPercent: 0, contractSymbol: "" };
+
+  const contractSymbol = position.contractSymbol ?? "";
+  const contracts = parseFloat(position.quantity);
+  const entryPrice = parseFloat(position.entryPrice);
+  const proceeds = contracts * currentPremium * OPTIONS_MULTIPLIER;
+  const cost = contracts * entryPrice * OPTIONS_MULTIPLIER;
+  const realizedPnl = proceeds - cost;
+  const realizedPnlPercent = entryPrice > 0 ? ((currentPremium - entryPrice) / entryPrice) * 100 : 0;
+
+  // Place the sell on Alpaca
+  const order = await placeAlpacaOrder({ apiKey, apiSecret, isPaper, symbol: contractSymbol, qty: contracts, side: "sell", orderType: "market" });
+  if (!order.success) {
+    logger.error({ contractSymbol, error: order.error }, "Alpaca sell order failed");
+    return { executed: false, realizedPnl: 0, realizedPnlPercent: 0, contractSymbol };
+  }
+
+  // Close in our DB
+  const [openTrade] = await db
+    .select()
+    .from(tradesTable)
+    .where(and(eq(tradesTable.brokerId, broker.id), eq(tradesTable.contractSymbol, contractSymbol), eq(tradesTable.status, "open")));
+
+  if (openTrade) {
+    await db.update(tradesTable)
+      .set({ exitPrice: String(currentPremium), realizedPnl: String(realizedPnl), realizedPnlPercent: String(realizedPnlPercent), status: "closed", closedAt: new Date() })
+      .where(eq(tradesTable.id, openTrade.id));
+  }
+
+  await db.delete(positionsTable).where(eq(positionsTable.id, positionId));
+
+  // Refresh account data from Alpaca
+  const fresh = await getAlpacaAccount(apiKey, apiSecret, isPaper);
+  if (fresh) {
+    await db.update(brokersTable)
+      .set({ buyingPower: String(fresh.buyingPower), accountValue: String(fresh.equity) })
+      .where(eq(brokersTable.id, broker.id));
+  }
+
+  logger.info({ contractSymbol, contracts, proceeds, pnl: realizedPnl, orderId: order.orderId }, "Alpaca SELL OPTION executed");
+  return { executed: true, realizedPnl, realizedPnlPercent, contractSymbol };
 }
