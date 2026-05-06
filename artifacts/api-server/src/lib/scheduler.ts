@@ -112,7 +112,7 @@ async function runOptionsCycle(
   ].filter(Boolean).join(" ");
 
   // ── 2. Fetch options chain (used for SL/TP prices + new entry) ──────────
-  const chain = await fetchSpyOptionsChain(data.currentPrice);
+  const chain = await fetchSpyOptionsChain(data.currentPrice, maxPositionUsd);
   const callPremium = chain?.call?.midPrice ?? chain?.call?.lastPrice ?? 0;
   const putPremium = chain?.put?.midPrice ?? chain?.put?.lastPrice ?? 0;
 

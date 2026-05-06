@@ -171,26 +171,65 @@ export async function fetchMarketData(symbol: string): Promise<MarketDataResult 
 
 // ─── SPY Options Chain ────────────────────────────────────────────────────
 
-/** Find the contract in a list whose strike is closest to the target price */
+/**
+ * Find the best OTM contract within a dollar budget.
+ *
+ * Strategy:
+ *  - Calls: strikes strictly above currentPrice (OTM)
+ *  - Puts:  strikes strictly below currentPrice (OTM)
+ *  - Rank by which 1-contract cost (mid × 100) is closest to budgetUsd
+ *    so we get the highest-delta strike we can actually afford.
+ *  - Exclude illiquid / zero-bid contracts.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function findAtmContract(contracts: any[], targetPrice: number): any | null {
+function findOtmContract(contracts: any[], currentPrice: number, type: "call" | "put", budgetUsd: number): any | null {
   if (!contracts || contracts.length === 0) return null;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return contracts.reduce((best: any, c: any) => {
-    if (!best) return c;
-    return Math.abs(c.strike - targetPrice) < Math.abs(best.strike - targetPrice) ? c : best;
-  }, null);
+  const withMid = contracts.map((c: any) => {
+    const bid = (c.bid as number) ?? 0;
+    const ask = (c.ask as number) ?? 0;
+    const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : ((c.lastPrice as number) ?? 0);
+    return { ...c as object, _mid: mid, _cost: mid * 100 };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  }).filter((c: any) => {
+    if (c._mid <= 0) return false;
+    return type === "call" ? (c.strike as number) > currentPrice : (c.strike as number) < currentPrice;
+  });
+
+  if (withMid.length === 0) return null;
+
+  // Sort closest-OTM-first so ties break toward higher delta
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withMid.sort((a: any, b: any) =>
+    type === "call" ? (a.strike as number) - (b.strike as number) : (b.strike as number) - (a.strike as number),
+  );
+
+  // Prefer contracts within budget; allow up to 1.5× if nothing fits
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const withinBudget = withMid.filter((c: any) => c._cost <= budgetUsd);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pool = withinBudget.length > 0 ? withinBudget : withMid.filter((c: any) => c._cost <= budgetUsd * 1.5);
+  const candidates = pool.length > 0 ? pool : withMid;
+
+  // Pick the contract whose cost is closest to the budget (maximise delta within spend)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return candidates.reduce((best: any, curr: any) =>
+    Math.abs(curr._cost - budgetUsd) < Math.abs(best._cost - budgetUsd) ? curr : best,
+  );
 }
 
 /**
- * Fetches the SPY options chain and returns the best ATM call and put
- * for the next expiry at least `minDaysOut` calendar days from now.
+ * Fetches the SPY options chain and returns the best near-term OTM call and put
+ * sized to fit within `budgetUsd` for a single contract.
  *
- * Step 1: fetch the base chain (no date) to get all available expirationDates.
- * Step 2: pick the first expiry that is >= minDaysOut days from today.
- * Step 3: re-fetch the chain for that specific date to get calls/puts.
+ * Step 1: fetch the base chain to discover all available expirationDates.
+ * Step 2: pick the nearest expiry that is >= minDaysOut days from now
+ *         (defaults to 2 days so we land on the closest weekly, not 0DTE).
+ * Step 3: re-fetch for that date and select the OTM strike whose
+ *         1-contract cost is closest to budgetUsd.
  */
-export async function fetchSpyOptionsChain(currentPrice: number, minDaysOut = 10): Promise<{
+export async function fetchSpyOptionsChain(currentPrice: number, budgetUsd = 150, minDaysOut = 2): Promise<{
   call: OptionsContract | null;
   put: OptionsContract | null;
   expiryDate: Date;
@@ -205,7 +244,7 @@ export async function fetchSpyOptionsChain(currentPrice: number, minDaysOut = 10
       return null;
     }
 
-    // Step 2 — pick first expiry >= minDaysOut days from now
+    // Step 2 — pick first expiry >= minDaysOut days from now (avoid same-day expiry)
     const cutoff = new Date(Date.now() + minDaysOut * 24 * 60 * 60 * 1000);
     const targetDate = expirationDates.find((d) => new Date(d) >= cutoff) ?? expirationDates[expirationDates.length - 1];
     const expiryDate = new Date(targetDate);
@@ -219,16 +258,16 @@ export async function fetchSpyOptionsChain(currentPrice: number, minDaysOut = 10
       return null;
     }
 
-    const rawCall = findAtmContract(optionSet.calls ?? [], currentPrice);
-    const rawPut = findAtmContract(optionSet.puts ?? [], currentPrice);
+    const rawCall = findOtmContract(optionSet.calls ?? [], currentPrice, "call", budgetUsd);
+    const rawPut  = findOtmContract(optionSet.puts  ?? [], currentPrice, "put",  budgetUsd);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function parseContract(raw: any, type: "call" | "put"): OptionsContract | null {
       if (!raw) return null;
-      const bid = raw.bid ?? 0;
-      const ask = raw.ask ?? 0;
-      const last = raw.lastPrice ?? 0;
-      const mid = bid && ask ? (bid + ask) / 2 : last;
+      const bid = (raw.bid as number) ?? 0;
+      const ask = (raw.ask as number) ?? 0;
+      const last = (raw.lastPrice as number) ?? 0;
+      const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : last;
       return {
         contractSymbol: raw.contractSymbol as string,
         optionType: type,
@@ -244,14 +283,23 @@ export async function fetchSpyOptionsChain(currentPrice: number, minDaysOut = 10
       };
     }
 
+    const daysOut = Math.round((expiryDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
     logger.info(
-      { expiryDate: expiryDate.toISOString().slice(0, 10), calls: optionSet.calls?.length ?? 0, puts: optionSet.puts?.length ?? 0 },
+      {
+        expiryDate: expiryDate.toISOString().slice(0, 10),
+        daysToExpiry: daysOut,
+        callStrike: rawCall?.strike ?? null,
+        putStrike: rawPut?.strike ?? null,
+        callCost: rawCall ? (((rawCall.bid ?? 0) + (rawCall.ask ?? 0)) / 2 * 100).toFixed(0) : null,
+        putCost:  rawPut  ? (((rawPut.bid  ?? 0) + (rawPut.ask  ?? 0)) / 2 * 100).toFixed(0) : null,
+        budgetUsd,
+      },
       "SPY options chain fetched",
     );
 
     return {
       call: parseContract(rawCall, "call"),
-      put: parseContract(rawPut, "put"),
+      put:  parseContract(rawPut,  "put"),
       expiryDate,
     };
   } catch (err) {
