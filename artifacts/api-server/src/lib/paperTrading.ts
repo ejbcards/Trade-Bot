@@ -368,7 +368,11 @@ export async function updatePaperPositionPrices(
 
   let totalPositionValue = 0;
   for (const pos of positions) {
-    const price = prices[pos.symbol] ?? parseFloat(pos.currentPrice ?? pos.entryPrice);
+    // For options: look up by the specific contract symbol first (e.g. "SPY260515C00718000"),
+    // then fall back to the underlying symbol, then the last stored price.
+    const price = (pos.contractSymbol ? prices[pos.contractSymbol] : undefined)
+      ?? prices[pos.symbol]
+      ?? parseFloat(pos.currentPrice ?? pos.entryPrice);
     const qty = parseFloat(pos.quantity);
     const entry = parseFloat(pos.entryPrice);
     const multiplier = pos.assetType === "options" ? OPTIONS_MULTIPLIER : 1;

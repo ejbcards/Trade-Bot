@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Activity, Play, Square, TrendingUp, TrendingDown, RefreshCcw, Clock, Wifi, WifiOff } from "lucide-react";
+import { Activity, Play, Square, TrendingUp, TrendingDown, RefreshCcw, Clock, Wifi, WifiOff, Zap } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -61,6 +61,37 @@ export default function Dashboard() {
   const [isStartDialogOpen, setIsStartDialogOpen] = useState(false);
   const [selectedBroker, setSelectedBroker] = useState<string>("");
   const [selectedStrategy, setSelectedStrategy] = useState<string>("");
+  const [isCycleRunning, setIsCycleRunning] = useState(false);
+
+  const handleRunCycle = async () => {
+    setIsCycleRunning(true);
+    try {
+      const resp = await fetch("/api/bot/run-cycle", { method: "POST" });
+      if (!resp.ok) {
+        const err = await resp.json() as { error: string };
+        toast.error("Cycle failed", { description: err.error });
+        return;
+      }
+      const result = await resp.json() as { cycleComplete: boolean; logs: { level: string; message: string }[] };
+      // Surface the most important log line as the toast description
+      const keyLog = result.logs.find(l =>
+        l.message.includes("TAKE-PROFIT") || l.message.includes("STOP-LOSS") || l.message.includes("FLIP") || l.message.includes("BUY")
+      );
+      if (keyLog) {
+        toast.success("Cycle complete", { description: keyLog.message });
+      } else {
+        toast.success("Cycle complete", { description: result.logs[0]?.message ?? "No trades this cycle" });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/positions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bot/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/activity"] });
+    } catch (err) {
+      toast.error("Cycle error", { description: (err as Error).message });
+    } finally {
+      setIsCycleRunning(false);
+    }
+  };
 
   const handleStartBot = () => {
     if (!selectedBroker || !selectedStrategy) return;
@@ -98,14 +129,28 @@ export default function Dashboard() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight">Command Center</h1>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {isLoadingBotStatus ? (
               <Skeleton className="h-10 w-32" />
             ) : botStatus?.isRunning ? (
-              <Button variant="destructive" onClick={handleStopBot} disabled={stopBot.isPending} data-testid="button-stop-bot">
-                <Square className="w-4 h-4 mr-2" />
-                Stop Bot
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleRunCycle}
+                  disabled={isCycleRunning}
+                  className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+                  title="Force an immediate SL/TP + trading cycle"
+                >
+                  {isCycleRunning
+                    ? <RefreshCcw className="w-4 h-4 mr-2 animate-spin" />
+                    : <Zap className="w-4 h-4 mr-2" />}
+                  {isCycleRunning ? "Running…" : "Run Now"}
+                </Button>
+                <Button variant="destructive" onClick={handleStopBot} disabled={stopBot.isPending} data-testid="button-stop-bot">
+                  <Square className="w-4 h-4 mr-2" />
+                  Stop Bot
+                </Button>
+              </>
             ) : (
               <Dialog open={isStartDialogOpen} onOpenChange={setIsStartDialogOpen}>
                 <DialogTrigger asChild>

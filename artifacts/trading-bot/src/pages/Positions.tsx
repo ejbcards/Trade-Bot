@@ -10,7 +10,34 @@ import { Wifi, WifiOff } from "lucide-react";
 
 export default function Positions() {
   const { positions, isLoading: isLoadingPositions, isConnected, dataSource, lastUpdated, getLive } = useLivePositions();
-  const { data: summary, isLoading: isLoadingSummary } = useGetPositionsSummary();
+  const { data: summaryFallback, isLoading: isLoadingSummary } = useGetPositionsSummary();
+
+  // Compute summary totals from live SSE data when available (avoids stale DB values)
+  const summary = positions && positions.length > 0 ? (() => {
+    let totalMarketValue = 0;
+    let totalUnrealizedPnl = 0;
+    let totalCostBasis = 0;
+    let longPositions = 0;
+    let shortPositions = 0;
+    for (const pos of positions) {
+      const live = getLive(pos.id);
+      const mv = live?.marketValue ?? pos.marketValue ?? 0;
+      const pnl = live?.unrealizedPnl ?? pos.unrealizedPnl ?? 0;
+      const costBasis = pos.entryPrice * pos.quantity * (pos.assetType === "options" ? 100 : 1);
+      totalMarketValue += mv;
+      totalUnrealizedPnl += pnl;
+      totalCostBasis += costBasis;
+      if (pos.side === "long" || pos.side === "long_call" || pos.side === "long_put") longPositions++;
+      else shortPositions++;
+    }
+    return {
+      totalMarketValue,
+      totalUnrealizedPnl,
+      totalUnrealizedPnlPercent: totalCostBasis > 0 ? (totalUnrealizedPnl / totalCostBasis) * 100 : 0,
+      longPositions,
+      shortPositions,
+    };
+  })() : summaryFallback;
 
   return (
     <AppLayout>

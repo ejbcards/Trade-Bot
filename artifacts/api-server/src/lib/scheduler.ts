@@ -245,8 +245,14 @@ async function runOptionsCycle(
     }
   }
 
-  // Update all position prices with current market data
-  await updatePaperPositionPrices(brokerId, { SPY: contract.midPrice });
+  // Update all position prices using per-contract live quotes (not a single ATM proxy)
+  const livePricesMap: Record<string, number> = {};
+  for (const [sym, q] of Object.entries(liveQuotes)) {
+    if (q.mark > 0) livePricesMap[sym] = q.mark;
+  }
+  // Ensure the newly purchased contract is included at its entry price
+  if (contract.midPrice > 0) livePricesMap[contract.contractSymbol] = contract.midPrice;
+  await updatePaperPositionPrices(brokerId, livePricesMap);
 }
 
 // ─── Stock trading cycle ─────────────────────────────────────────────────
