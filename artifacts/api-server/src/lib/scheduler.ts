@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { evaluateDecisionTable } from "./decisionEngine";
 import { fetchMarketData, fetchSpyOptionsChain } from "./marketData";
+import { fetchLiveOptionPrices } from "./liveQuotes";
 import {
   ensurePaperBroker,
   executePaperBuy,
@@ -104,18 +105,31 @@ async function runOptionsCycle(
   const callPremium = chain?.call?.midPrice ?? chain?.call?.lastPrice ?? 0;
   const putPremium = chain?.put?.midPrice ?? chain?.put?.lastPrice ?? 0;
 
-  // ── 3. Check SL/TP on every open position ──────────────────────────────
+  // ── 3. Check SL/TP on every open position using that position's own live price ──
   const openPositions = await getAllOpenOptionsPositions(brokerId, strategyId);
+
+  // Fetch real prices for each held contract — not a generic ATM proxy
+  const heldSymbols = openPositions.map((p) => p.contractSymbol).filter((s): s is string => !!s);
+  const liveQuotes = heldSymbols.length > 0 ? await fetchLiveOptionPrices(heldSymbols) : {};
 
   for (const pos of openPositions) {
     const isCall = pos.optionType === "call" || pos.side === "long_call";
-    // Use the current ATM premium for the matching direction as a proxy price
-    const currentPremium = isCall ? callPremium : putPremium;
+    const quote = pos.contractSymbol ? liveQuotes[pos.contractSymbol] : null;
+
+    // Use live mark for the specific contract; fall back to ATM premium only if no quote
+    const currentPremium = quote?.mark && quote.mark > 0
+      ? quote.mark
+      : (isCall ? callPremium : putPremium);
 
     if (currentPremium <= 0) continue;
 
     const entryPrice = parseFloat(pos.entryPrice);
     const changePct = entryPrice > 0 ? ((currentPremium - entryPrice) / entryPrice) * 100 : 0;
+
+    logger.info(
+      { contract: pos.contractSymbol, entryPrice, currentPremium, changePct: changePct.toFixed(1), tpThreshold: takeProfitPercent, slThreshold: -stopLossPercent },
+      "SL/TP check",
+    );
 
     let trigger: "stop_loss" | "take_profit" | null = null;
     if (changePct <= -stopLossPercent) trigger = "stop_loss";
