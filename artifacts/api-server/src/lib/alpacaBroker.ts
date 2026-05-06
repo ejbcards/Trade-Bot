@@ -218,7 +218,29 @@ export async function executeAlpacaBuyOption(
     return { executed: false, contracts: 0, cost: 0, contractSymbol: contract.contractSymbol };
   }
 
-  // Track in our DB (same shape as paper trading)
+  // Poll for the actual fill price — market orders on Alpaca paper fill within a few seconds
+  let fillPrice = premiumPerShare;
+  if (order.orderId) {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        const orderResp = await fetch(`${brokerBase(isPaper)}/v2/orders/${order.orderId}`, { headers: alpacaHeaders(apiKey, apiSecret) });
+        if (orderResp.ok) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const o = await orderResp.json() as any;
+          if (o.filled_avg_price) {
+            fillPrice = parseFloat(o.filled_avg_price);
+            logger.info({ orderId: order.orderId, fillPrice, symbol: contract.contractSymbol }, "Alpaca order fill price confirmed");
+            break;
+          }
+        }
+      } catch { /* ignore, use midPrice fallback */ }
+    }
+  }
+
+  const actualCost = fillPrice * OPTIONS_MULTIPLIER * contracts;
+
+  // Track in our DB using the real fill price
   await db.insert(tradesTable).values({
     brokerId: broker.id,
     strategyId,
@@ -226,7 +248,7 @@ export async function executeAlpacaBuyOption(
     assetType: "options",
     side: "buy",
     quantity: String(contracts),
-    entryPrice: String(premiumPerShare),
+    entryPrice: String(fillPrice),
     status: "open",
     optionType: contract.optionType,
     contractSymbol: contract.contractSymbol,
@@ -243,9 +265,9 @@ export async function executeAlpacaBuyOption(
     assetType: "options",
     side: contract.optionType === "call" ? "long_call" : "long_put",
     quantity: String(contracts),
-    entryPrice: String(premiumPerShare),
-    currentPrice: String(premiumPerShare),
-    marketValue: String(totalCost),
+    entryPrice: String(fillPrice),
+    currentPrice: String(fillPrice),
+    marketValue: String(actualCost),
     unrealizedPnl: "0",
     unrealizedPnlPercent: "0",
     optionType: contract.optionType,
@@ -262,8 +284,8 @@ export async function executeAlpacaBuyOption(
       .where(eq(brokersTable.id, broker.id));
   }
 
-  logger.info({ contractSymbol: contract.contractSymbol, contracts, totalCost, orderId: order.orderId }, "Alpaca BUY OPTION executed");
-  return { executed: true, contracts, cost: totalCost, contractSymbol: contract.contractSymbol, orderId: order.orderId };
+  logger.info({ contractSymbol: contract.contractSymbol, contracts, actualCost, fillPrice, orderId: order.orderId }, "Alpaca BUY OPTION executed");
+  return { executed: true, contracts, cost: actualCost, contractSymbol: contract.contractSymbol, orderId: order.orderId };
 }
 
 /**
