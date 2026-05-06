@@ -5,8 +5,8 @@ export interface LivePriceUpdate {
   id: number;
   contractSymbol: string | null;
   currentPrice: number;
-  bid: number;
-  ask: number;
+  bid: number | null;
+  ask: number | null;
   mark: number;
   change: number;
   changePercent: number;

@@ -151,10 +151,10 @@ export default function Positions() {
                           <TableCell className="text-right font-medium">{pos.quantity}</TableCell>
                           <TableCell className="text-right font-mono">{formatCurrency(pos.entryPrice)}</TableCell>
                           <TableCell className="text-right font-mono text-emerald-400">
-                            {live ? formatCurrency(live.bid) : "—"}
+                            {live?.bid != null ? formatCurrency(live.bid) : <span className="text-muted-foreground/50">—</span>}
                           </TableCell>
                           <TableCell className="text-right font-mono text-rose-400">
-                            {live ? formatCurrency(live.ask) : "—"}
+                            {live?.ask != null ? formatCurrency(live.ask) : <span className="text-muted-foreground/50">—</span>}
                           </TableCell>
                           <TableCell className="text-right font-mono font-medium">
                             {pos.currentPrice ? formatCurrency(pos.currentPrice) : "—"}

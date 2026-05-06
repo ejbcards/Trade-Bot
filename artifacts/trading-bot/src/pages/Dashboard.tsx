@@ -372,12 +372,12 @@ export default function Dashboard() {
                               </div>
                             </TableCell>
                             <TableCell className="text-right font-mono text-sm">
-                              {live ? (
+                              {live && (live.bid !== null || live.ask !== null) ? (
                                 <div className="flex flex-col items-end gap-0.5">
-                                  <span className="text-emerald-400">{formatCurrency(live.bid)}</span>
-                                  <span className="text-rose-400">{formatCurrency(live.ask)}</span>
+                                  <span className="text-emerald-400">{live.bid !== null ? formatCurrency(live.bid) : "—"}</span>
+                                  <span className="text-rose-400">{live.ask !== null ? formatCurrency(live.ask) : "—"}</span>
                                 </div>
-                              ) : "—"}
+                              ) : <span className="text-muted-foreground/50 text-xs">no quote</span>}
                             </TableCell>
                             <TableCell className="text-right font-mono text-amber-400">
                               {formatCurrency(targetPrice)}

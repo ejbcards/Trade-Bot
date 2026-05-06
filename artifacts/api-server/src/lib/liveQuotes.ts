@@ -10,8 +10,8 @@ const yahooFinance = new (YahooFinanceClass as any)({ suppressNotices: ["yahooSu
 const SCHWAB_MARKET_DATA_BASE = "https://api.schwabapi.com/marketdata/v1";
 
 export interface LiveQuote {
-  bid: number;
-  ask: number;
+  bid: number | null;
+  ask: number | null;
   mark: number;
   last: number;
   change: number;
@@ -38,8 +38,8 @@ async function fetchSchwabQuotes(symbols: string[], accessToken: string): Promis
     const entry = data[symbol];
     if (!entry?.quote) continue;
     const q = entry.quote;
-    const bid = q.bidPrice ?? 0;
-    const ask = q.askPrice ?? 0;
+    const bid = q.bidPrice > 0 ? (q.bidPrice as number) : null;
+    const ask = q.askPrice > 0 ? (q.askPrice as number) : null;
     result[symbol] = {
       bid,
       ask,
@@ -66,9 +66,10 @@ async function fetchYahooQuotes(symbols: string[]): Promise<Record<string, LiveQ
         const quote = await (yahooFinance.quote as any)(symbol) as any;
         if (!quote) return;
 
-        const bid = quote.bid ?? 0;
-        const ask = quote.ask ?? 0;
+        const bid = quote.bid > 0 ? (quote.bid as number) : null;
+        const ask = quote.ask > 0 ? (quote.ask as number) : null;
         const last = quote.regularMarketPrice ?? 0;
+        // Use mid when both sides are quoted, otherwise fall back to last traded price
         const mark = bid && ask ? (bid + ask) / 2 : last;
 
         result[symbol] = {
