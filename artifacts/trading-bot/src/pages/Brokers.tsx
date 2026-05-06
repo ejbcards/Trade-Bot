@@ -28,6 +28,14 @@ async function fetchSchwabStatus(): Promise<{ connected: boolean; hasRefreshToke
   return resp.json();
 }
 
+const BROKER_LABELS: Record<string, string> = {
+  schwab: "Charles Schwab",
+  robinhood: "Robinhood",
+  alpaca: "Alpaca",
+  interactive_brokers: "Interactive Brokers",
+  paper: "Paper Trading",
+};
+
 export default function Brokers() {
   const queryClient = useQueryClient();
   const { data: brokers, isLoading } = useListBrokers();
@@ -38,19 +46,40 @@ export default function Brokers() {
   const testConnection = useTestBrokerConnection();
 
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [formData, setFormData] = useState({ name: "", brokerType: "schwab", apiKey: "", apiSecret: "", isActive: true });
+  const [formData, setFormData] = useState({
+    name: "",
+    brokerType: "alpaca",
+    apiKey: "",
+    apiSecret: "",
+    isActive: true,
+    alpacaPaper: true,
+  });
   const [schwabConnecting, setSchwabConnecting] = useState<number | null>(null);
   const [schwabStatus, setSchwabStatus] = useState<Record<number, { hasRefreshToken: boolean }>>({});
 
+  const isAlpaca = formData.brokerType === "alpaca";
+  const isSchwabForm = formData.brokerType === "schwab";
+
+  const resetForm = () => setFormData({ name: "", brokerType: "alpaca", apiKey: "", apiSecret: "", isActive: true, alpacaPaper: true });
+
   const handleAdd = () => {
+    const payload = {
+      name: formData.name,
+      brokerType: formData.brokerType,
+      apiKey: formData.apiKey || undefined,
+      apiSecret: formData.apiSecret || undefined,
+      isActive: formData.isActive,
+      // store paper/live mode in accountId before we have a real account number
+      ...(isAlpaca ? { accountId: formData.alpacaPaper ? "paper" : "live" } : {}),
+    };
     createBroker.mutate(
-      { data: formData },
+      { data: payload },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["/api/brokers"] });
           toast.success("Broker added successfully");
           setIsAddOpen(false);
-          setFormData({ name: "", brokerType: "schwab", apiKey: "", apiSecret: "", isActive: true });
+          resetForm();
         },
         onError: (err: unknown) => toast.error("Failed to add broker", { description: (err as Error).message })
       }
@@ -104,37 +133,23 @@ export default function Brokers() {
     setSchwabConnecting(brokerId);
     try {
       const url = await fetchSchwabAuthUrl();
-      if (!url) {
-        toast.error("Could not get Schwab authorization URL");
-        return;
-      }
+      if (!url) { toast.error("Could not get Schwab authorization URL"); return; }
 
-      // Open the Schwab authorization page in a new tab
       const popup = window.open(url, "_blank", "width=700,height=700,scrollbars=yes");
-
-      // Poll until the popup closes (user finished OAuth) then re-check status
       const poll = setInterval(async () => {
         if (!popup || popup.closed) {
           clearInterval(poll);
           setSchwabConnecting(null);
-
-          // Check if tokens were stored
           const status = await fetchSchwabStatus();
           setSchwabStatus(prev => ({ ...prev, [brokerId]: status }));
-
           if (status.hasRefreshToken) {
-            toast.success("Schwab connected!", {
-              description: "Live quotes will now stream directly from Schwab's Market Data API.",
-            });
+            toast.success("Schwab connected!", { description: "Live quotes will now stream from Schwab's Market Data API." });
             queryClient.invalidateQueries({ queryKey: ["/api/brokers"] });
           } else {
-            toast.error("Schwab authorization incomplete", {
-              description: "Please try again and complete the authorization in the popup.",
-            });
+            toast.error("Schwab authorization incomplete", { description: "Please try again and complete the authorization in the popup." });
           }
         }
       }, 1000);
-
     } catch {
       toast.error("Failed to initiate Schwab authorization");
       setSchwabConnecting(null);
@@ -151,6 +166,14 @@ export default function Brokers() {
     }
   };
 
+  // Derive Alpaca mode from stored accountId ("paper:ACC-xxx" or "live:ACC-xxx" or "paper"/"live")
+  const alpacaMode = (accountId: string | null | undefined): "paper" | "live" | null => {
+    if (!accountId) return null;
+    if (accountId.startsWith("paper")) return "paper";
+    if (accountId.startsWith("live")) return "live";
+    return null;
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -160,14 +183,14 @@ export default function Brokers() {
             <p className="text-muted-foreground mt-1">Manage your exchange integrations and API keys.</p>
           </div>
 
-          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+          <Dialog open={isAddOpen} onOpenChange={(o) => { setIsAddOpen(o); if (!o) resetForm(); }}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="w-4 h-4 mr-2" />
                 Add Connection
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>Add Broker Connection</DialogTitle>
               </DialogHeader>
@@ -177,7 +200,7 @@ export default function Brokers() {
                   <Input
                     value={formData.name}
                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g., Main Schwab Account"
+                    placeholder={isAlpaca ? "e.g., My Alpaca Paper Account" : "e.g., Main Schwab Account"}
                   />
                 </div>
                 <div className="space-y-2">
@@ -185,20 +208,66 @@ export default function Brokers() {
                   <Select value={formData.brokerType} onValueChange={v => setFormData({ ...formData, brokerType: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="alpaca">Alpaca</SelectItem>
                       <SelectItem value="schwab">Charles Schwab</SelectItem>
                       <SelectItem value="robinhood">Robinhood</SelectItem>
-                      <SelectItem value="alpaca">Alpaca</SelectItem>
                       <SelectItem value="interactive_brokers">Interactive Brokers</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Alpaca paper/live toggle */}
+                {isAlpaca && (
+                  <div className="rounded-lg border p-3 space-y-3 bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">Paper Trading</p>
+                        <p className="text-xs text-muted-foreground">Uses Alpaca's simulated environment</p>
+                      </div>
+                      <Switch
+                        checked={formData.alpacaPaper}
+                        onCheckedChange={c => setFormData({ ...formData, alpacaPaper: c })}
+                      />
+                    </div>
+                    {!formData.alpacaPaper && (
+                      <div className="flex items-start gap-2 text-xs bg-amber-500/10 border border-amber-500/20 rounded-md p-2 text-amber-600 dark:text-amber-400">
+                        <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                        <span>Live trading uses real money. Make sure you understand the risks before enabling.</span>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Get your API keys from{" "}
+                      <a href="https://app.alpaca.markets/paper/dashboard/overview" target="_blank" rel="noreferrer" className="underline text-primary">
+                        app.alpaca.markets
+                      </a>
+                    </p>
+                  </div>
+                )}
+
+                {/* Schwab note */}
+                {isSchwabForm && (
+                  <div className="text-xs text-muted-foreground bg-muted/30 rounded-md p-2 border">
+                    After adding, use the <strong>Connect with Schwab</strong> button on the card to complete OAuth authorization for live market data.
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  <Label>API Key</Label>
-                  <Input type="password" value={formData.apiKey} onChange={e => setFormData({ ...formData, apiKey: e.target.value })} />
+                  <Label>{isAlpaca ? "API Key ID" : "API Key"}</Label>
+                  <Input
+                    type="password"
+                    value={formData.apiKey}
+                    onChange={e => setFormData({ ...formData, apiKey: e.target.value })}
+                    placeholder={isAlpaca ? "PKXXXXX..." : ""}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>API Secret</Label>
-                  <Input type="password" value={formData.apiSecret} onChange={e => setFormData({ ...formData, apiSecret: e.target.value })} />
+                  <Label>{isAlpaca ? "Secret Key" : "API Secret"}</Label>
+                  <Input
+                    type="password"
+                    value={formData.apiSecret}
+                    onChange={e => setFormData({ ...formData, apiSecret: e.target.value })}
+                    placeholder={isAlpaca ? "xxxxxxxx..." : ""}
+                  />
                 </div>
                 <div className="flex items-center justify-between pt-2">
                   <Label>Enable Connection Immediately</Label>
@@ -207,7 +276,10 @@ export default function Brokers() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                <Button onClick={handleAdd} disabled={!formData.name || !formData.apiKey || createBroker.isPending}>
+                <Button
+                  onClick={handleAdd}
+                  disabled={!formData.name || (!isAlpaca && !formData.apiKey) || (isAlpaca && (!formData.apiKey || !formData.apiSecret)) || createBroker.isPending}
+                >
                   {createBroker.isPending ? "Adding..." : "Add Connection"}
                 </Button>
               </DialogFooter>
@@ -217,17 +289,18 @@ export default function Brokers() {
 
         {isLoading ? (
           <div className="grid gap-4 md:grid-cols-2">
-            {Array.from({ length: 2 }).map((_, i) => (
-              <Skeleton key={i} className="h-48 rounded-xl" />
-            ))}
+            {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-48 rounded-xl" />)}
           </div>
         ) : brokers && brokers.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {brokers.map(broker => {
               const isSchwab = broker.brokerType === "schwab";
+              const isAlpacaBroker = broker.brokerType === "alpaca";
               const liveStatus = schwabStatus[broker.id];
               const hasOAuth = liveStatus?.hasRefreshToken ?? false;
               const isConnectingThis = schwabConnecting === broker.id;
+              const mode = alpacaMode(broker.accountId);
+              const accountDisplay = broker.accountId?.includes(":") ? broker.accountId.split(":")[1] : broker.accountId;
 
               return (
                 <Card key={broker.id} className={!broker.isActive ? "opacity-70" : ""}>
@@ -239,7 +312,14 @@ export default function Brokers() {
                         </div>
                         <div>
                           <CardTitle className="text-lg">{broker.name}</CardTitle>
-                          <CardDescription className="capitalize">{broker.brokerType.replace("_", " ")}</CardDescription>
+                          <CardDescription className="capitalize flex items-center gap-1.5">
+                            {BROKER_LABELS[broker.brokerType] ?? broker.brokerType.replace("_", " ")}
+                            {isAlpacaBroker && mode && (
+                              <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${mode === "paper" ? "border-blue-500/40 text-blue-400" : "border-amber-500/40 text-amber-400"}`}>
+                                {mode === "paper" ? "Paper" : "Live"}
+                              </Badge>
+                            )}
+                          </CardDescription>
                         </div>
                       </div>
                       <Switch
@@ -254,11 +334,11 @@ export default function Brokers() {
                     <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-lg border">
                       <div>
                         <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Account Value</p>
-                        <p className="text-lg font-semibold">{formatCurrency(broker.accountValue || 0)}</p>
+                        <p className="text-lg font-semibold">{broker.accountValue ? formatCurrency(broker.accountValue) : "—"}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Buying Power</p>
-                        <p className="text-lg font-semibold">{formatCurrency(broker.buyingPower || 0)}</p>
+                        <p className="text-lg font-semibold">{broker.buyingPower ? formatCurrency(broker.buyingPower) : "—"}</p>
                       </div>
                     </div>
 
@@ -267,6 +347,9 @@ export default function Brokers() {
                       {broker.status === "connected" ? (
                         <span className="flex items-center text-emerald-500 font-medium">
                           <CheckCircle2 className="w-4 h-4 mr-1" /> Connected
+                          {accountDisplay && accountDisplay !== "paper" && accountDisplay !== "live" && (
+                            <span className="ml-1.5 text-xs text-muted-foreground font-normal">{accountDisplay}</span>
+                          )}
                         </span>
                       ) : broker.status === "error" ? (
                         <span className="flex items-center text-destructive font-medium">
@@ -276,6 +359,34 @@ export default function Brokers() {
                         <span className="text-muted-foreground">Disconnected</span>
                       )}
                     </div>
+
+                    {/* Alpaca info section */}
+                    {isAlpacaBroker && (
+                      <div className="rounded-lg border p-3 space-y-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground font-medium">Market Data</span>
+                          {broker.status === "connected" ? (
+                            <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30 gap-1">
+                              <Wifi className="w-3 h-3" /> Alpaca Live
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-muted-foreground gap-1">
+                              <WifiOff className="w-3 h-3" /> Offline
+                            </Badge>
+                          )}
+                        </div>
+                        {broker.status === "connected" && (
+                          <p className="text-xs text-muted-foreground">
+                            Real-time bid/ask option quotes stream from Alpaca's Market Data API.
+                          </p>
+                        )}
+                        {broker.status !== "connected" && (
+                          <p className="text-xs text-muted-foreground">
+                            Click "Test Connection" to verify your API keys and enable live quotes.
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {/* Schwab OAuth section */}
                     {isSchwab && (
@@ -292,14 +403,12 @@ export default function Brokers() {
                             </Badge>
                           )}
                         </div>
-
                         {!hasOAuth && (
                           <div className="flex items-start gap-2 text-xs text-muted-foreground bg-amber-500/5 border border-amber-500/20 rounded-md p-2">
                             <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
                             <span>Authorize with Schwab to stream real-time bid/ask quotes directly from their Market Data API.</span>
                           </div>
                         )}
-
                         <div className="flex gap-2">
                           <Button
                             size="sm"
@@ -318,12 +427,7 @@ export default function Brokers() {
                               <><ExternalLink className="w-3.5 h-3.5 mr-1.5" /> Connect with Schwab</>
                             )}
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleCheckSchwabStatus(broker.id)}
-                            title="Check OAuth status"
-                          >
+                          <Button size="sm" variant="outline" onClick={() => handleCheckSchwabStatus(broker.id)} title="Check OAuth status">
                             <RefreshCcw className="w-3.5 h-3.5" />
                           </Button>
                         </div>

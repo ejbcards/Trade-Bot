@@ -9,6 +9,7 @@ import {
   DeleteBrokerParams,
   TestBrokerConnectionParams,
 } from "@workspace/api-zod";
+import { getAlpacaAccount } from "../lib/alpacaBroker";
 
 const router: IRouter = Router();
 
@@ -121,7 +122,50 @@ router.post("/brokers/:id/test", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Broker not found" });
     return;
   }
-  // Simulate connection test (real implementation would call broker API)
+  // ── Alpaca: real API call ──────────────────────────────────────────────────
+  if (broker.brokerType === "alpaca") {
+    if (!broker.apiKey || !broker.apiSecret) {
+      await db.update(brokersTable).set({ status: "error" }).where(eq(brokersTable.id, params.data.id));
+      res.json({ success: false, message: "Alpaca API Key ID and Secret Key are required.", accountId: null, accountValue: null });
+      return;
+    }
+    // accountId stores "paper" or "live" as the mode flag before a real ID is set
+    const isPaper = !broker.accountId || broker.accountId === "paper";
+    const account = await getAlpacaAccount(broker.apiKey, broker.apiSecret, isPaper);
+    if (!account) {
+      // Try the other mode as a fallback
+      const accountAlt = await getAlpacaAccount(broker.apiKey, broker.apiSecret, !isPaper);
+      if (!accountAlt) {
+        await db.update(brokersTable).set({ status: "error" }).where(eq(brokersTable.id, params.data.id));
+        res.json({ success: false, message: "Could not connect to Alpaca. Check your API Key ID and Secret Key.", accountId: null, accountValue: null });
+        return;
+      }
+      await db.update(brokersTable).set({
+        status: "connected",
+        accountId: `${accountAlt.isPaper ? "paper" : "live"}:${accountAlt.accountNumber}`,
+        accountValue: accountAlt.equity.toFixed(4),
+        buyingPower: accountAlt.buyingPower.toFixed(4),
+      }).where(eq(brokersTable.id, params.data.id));
+      res.json({ success: true, message: `Connected to Alpaca ${accountAlt.isPaper ? "Paper" : "Live"} — ${accountAlt.accountNumber}`, accountId: accountAlt.accountNumber, accountValue: accountAlt.equity });
+      return;
+    }
+    await db.update(brokersTable).set({
+      status: "connected",
+      accountId: `${account.isPaper ? "paper" : "live"}:${account.accountNumber}`,
+      accountValue: account.equity.toFixed(4),
+      buyingPower: account.buyingPower.toFixed(4),
+    }).where(eq(brokersTable.id, params.data.id));
+    res.json({ success: true, message: `Connected to Alpaca ${account.isPaper ? "Paper" : "Live"} — ${account.accountNumber}`, accountId: account.accountNumber, accountValue: account.equity });
+    return;
+  }
+
+  // ── Paper broker: no credentials needed ───────────────────────────────────
+  if (broker.brokerType === "paper") {
+    res.json({ success: true, message: "Paper trading account is always active.", accountId: "paper", accountValue: broker.accountValue ? parseFloat(broker.accountValue) : 100000 });
+    return;
+  }
+
+  // ── Other brokers: mock for now ───────────────────────────────────────────
   const hasCredentials = !!(broker.apiKey || broker.accessToken);
   if (hasCredentials) {
     const mockAccountValue = 50000 + Math.random() * 200000;

@@ -3,6 +3,7 @@ import { db, brokersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { SCHWAB_BROKER_TYPE, getValidAccessToken } from "./schwabBroker";
+import { getAlpacaOptionQuotes } from "./alpacaBroker";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const yahooFinance = new (YahooFinanceClass as any)({ suppressNotices: ["yahooSurvey"] });
@@ -16,7 +17,7 @@ export interface LiveQuote {
   last: number;
   change: number;
   changePercent: number;
-  source: "schwab" | "yahoo";
+  source: "schwab" | "alpaca" | "yahoo";
 }
 
 // ─── Schwab Market Data API ───────────────────────────────────────────────
@@ -98,7 +99,7 @@ async function fetchYahooQuotes(symbols: string[]): Promise<Record<string, LiveQ
 export async function fetchLiveOptionPrices(contractSymbols: string[]): Promise<Record<string, LiveQuote>> {
   if (contractSymbols.length === 0) return {};
 
-  // Try Schwab if there's a connected broker with refresh token
+  // 1. Try Schwab first (OAuth tokens + Market Data API)
   try {
     const [schwabBroker] = await db
       .select()
@@ -116,10 +117,41 @@ export async function fetchLiveOptionPrices(contractSymbols: string[]): Promise<
       }
     }
   } catch (err) {
-    logger.warn({ err }, "Schwab quotes unavailable — falling back to Yahoo Finance");
+    logger.warn({ err }, "Schwab quotes unavailable — trying Alpaca");
   }
 
-  // Yahoo Finance fallback
+  // 2. Try Alpaca if there's a connected Alpaca broker with API credentials
+  try {
+    const [alpacaBroker] = await db
+      .select()
+      .from(brokersTable)
+      .where(eq(brokersTable.brokerType, "alpaca"));
+
+    if (alpacaBroker?.apiKey && alpacaBroker?.apiSecret && alpacaBroker.status === "connected") {
+      const alpacaRaw = await getAlpacaOptionQuotes(contractSymbols, alpacaBroker.apiKey, alpacaBroker.apiSecret);
+      if (Object.keys(alpacaRaw).length > 0) {
+        // Map Alpaca quotes to LiveQuote shape
+        const quotes: Record<string, LiveQuote> = {};
+        for (const [sym, q] of Object.entries(alpacaRaw)) {
+          quotes[sym] = {
+            bid: q.bid,
+            ask: q.ask,
+            mark: q.mark,
+            last: q.mark,
+            change: 0,
+            changePercent: 0,
+            source: "alpaca",
+          };
+        }
+        logger.info({ count: Object.keys(quotes).length }, "Live quotes from Alpaca");
+        return quotes;
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "Alpaca quotes unavailable — falling back to Yahoo Finance");
+  }
+
+  // 3. Yahoo Finance fallback
   const quotes = await fetchYahooQuotes(contractSymbols);
   logger.info({ count: Object.keys(quotes).length }, "Live quotes from Yahoo Finance");
   return quotes;
