@@ -164,6 +164,76 @@ export async function placeAlpacaOrder(opts: {
   return { success: true, orderId: order.id };
 }
 
+// ─── Alpaca Position Marks ────────────────────────────────────────────────────
+
+/**
+ * Returns Alpaca's official current_price for every open position.
+ * This matches exactly what Alpaca shows in their UI — more accurate than (bid+ask)/2.
+ */
+export async function getAlpacaPositionMarks(
+  apiKey: string,
+  apiSecret: string,
+  isPaper: boolean,
+): Promise<Record<string, number>> {
+  try {
+    const resp = await fetch(`${brokerBase(isPaper)}/v2/positions`, {
+      headers: alpacaHeaders(apiKey, apiSecret),
+    });
+    if (!resp.ok) return {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const positions = await resp.json() as any[];
+    const result: Record<string, number> = {};
+    for (const pos of positions) {
+      if (pos.symbol && pos.current_price) {
+        result[pos.symbol as string] = parseFloat(pos.current_price as string);
+      }
+    }
+    logger.info({ count: Object.keys(result).length }, "Alpaca position marks fetched");
+    return result;
+  } catch (err) {
+    logger.warn({ err }, "Alpaca position marks fetch failed");
+    return {};
+  }
+}
+
+/**
+ * Syncs every Alpaca position in our DB with Alpaca's official current_price and equity.
+ * Call this at the end of each trading cycle instead of updatePaperPositionPrices.
+ */
+export async function syncAlpacaPositionPrices(broker: AlpacaBrokerRecord): Promise<void> {
+  const apiKey = broker.apiKey ?? "";
+  const apiSecret = broker.apiSecret ?? "";
+  const isPaper = alpacaIsPaper(broker);
+
+  const marks = await getAlpacaPositionMarks(apiKey, apiSecret, isPaper);
+  if (Object.keys(marks).length === 0) return;
+
+  const positions = await db.select().from(positionsTable).where(eq(positionsTable.brokerId, broker.id));
+  for (const pos of positions) {
+    const symbol = pos.contractSymbol ?? pos.symbol;
+    const currentPrice = marks[symbol];
+    if (!currentPrice || currentPrice <= 0) continue;
+
+    const qty = parseFloat(pos.quantity);
+    const entry = parseFloat(pos.entryPrice);
+    const multiplier = pos.assetType === "options" ? OPTIONS_MULTIPLIER : 1;
+    const marketValue = qty * currentPrice * multiplier;
+    const unrealizedPnl = (currentPrice - entry) * qty * multiplier;
+    const unrealizedPnlPercent = entry > 0 ? ((currentPrice - entry) / entry) * 100 : 0;
+
+    await db.update(positionsTable)
+      .set({ currentPrice: String(currentPrice), marketValue: String(marketValue), unrealizedPnl: String(unrealizedPnl), unrealizedPnlPercent: String(unrealizedPnlPercent) })
+      .where(eq(positionsTable.id, pos.id));
+  }
+
+  const account = await getAlpacaAccount(apiKey, apiSecret, isPaper);
+  if (account) {
+    await db.update(brokersTable)
+      .set({ accountValue: String(account.equity), buyingPower: String(account.buyingPower) })
+      .where(eq(brokersTable.id, broker.id));
+  }
+}
+
 // ─── Alpaca Options Execution (buy + sell with DB tracking) ──────────────────
 
 type AlpacaBrokerRecord = { id: number; apiKey: string | null; apiSecret: string | null; accountId: string | null };

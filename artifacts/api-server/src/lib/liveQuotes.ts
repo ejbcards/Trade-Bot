@@ -3,7 +3,7 @@ import { db, brokersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { SCHWAB_BROKER_TYPE, getValidAccessToken } from "./schwabBroker";
-import { getAlpacaOptionQuotes } from "./alpacaBroker";
+import { getAlpacaOptionQuotes, getAlpacaPositionMarks } from "./alpacaBroker";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const yahooFinance = new (YahooFinanceClass as any)({ suppressNotices: ["yahooSurvey"] });
@@ -128,15 +128,20 @@ export async function fetchLiveOptionPrices(contractSymbols: string[]): Promise<
       .where(eq(brokersTable.brokerType, "alpaca"));
 
     if (alpacaBroker?.apiKey && alpacaBroker?.apiSecret && alpacaBroker.status === "connected") {
-      const alpacaRaw = await getAlpacaOptionQuotes(contractSymbols, alpacaBroker.apiKey, alpacaBroker.apiSecret);
+      const isPaper = !alpacaBroker.accountId || alpacaBroker.accountId.startsWith("paper");
+      const [alpacaRaw, positionMarks] = await Promise.all([
+        getAlpacaOptionQuotes(contractSymbols, alpacaBroker.apiKey, alpacaBroker.apiSecret),
+        getAlpacaPositionMarks(alpacaBroker.apiKey, alpacaBroker.apiSecret, isPaper),
+      ]);
       if (Object.keys(alpacaRaw).length > 0) {
-        // Map Alpaca quotes to LiveQuote shape
         const quotes: Record<string, LiveQuote> = {};
         for (const [sym, q] of Object.entries(alpacaRaw)) {
+          // Use Alpaca's official position mark when available — matches their UI exactly
+          const officialMark = positionMarks[sym] ?? q.mark;
           quotes[sym] = {
             bid: q.bid,
             ask: q.ask,
-            mark: q.mark,
+            mark: officialMark,
             last: q.mark,
             change: 0,
             changePercent: 0,

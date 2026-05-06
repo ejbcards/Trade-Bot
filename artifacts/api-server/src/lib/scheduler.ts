@@ -16,7 +16,7 @@ import {
   updatePaperPositionPrices,
   MAX_CONCURRENT_OPTIONS,
 } from "./paperTrading";
-import { executeAlpacaBuyOption, executeAlpacaSellOptionById } from "./alpacaBroker";
+import { executeAlpacaBuyOption, executeAlpacaSellOptionById, syncAlpacaPositionPrices } from "./alpacaBroker";
 
 const ET_TZ = "America/New_York";
 
@@ -257,14 +257,17 @@ async function runOptionsCycle(
     }
   }
 
-  // Update all position prices using per-contract live quotes (not a single ATM proxy)
-  const livePricesMap: Record<string, number> = {};
-  for (const [sym, q] of Object.entries(liveQuotes)) {
-    if (q.mark > 0) livePricesMap[sym] = q.mark;
+  // Sync position prices — Alpaca uses their official mark; paper uses live bid/ask mid
+  if (isAlpaca) {
+    await syncAlpacaPositionPrices(activeBroker);
+  } else {
+    const livePricesMap: Record<string, number> = {};
+    for (const [sym, q] of Object.entries(liveQuotes)) {
+      if (q.mark > 0) livePricesMap[sym] = q.mark;
+    }
+    if (contract.midPrice > 0) livePricesMap[contract.contractSymbol] = contract.midPrice;
+    await updatePaperPositionPrices(brokerId, livePricesMap);
   }
-  // Ensure the newly purchased contract is included at its entry price
-  if (contract.midPrice > 0) livePricesMap[contract.contractSymbol] = contract.midPrice;
-  await updatePaperPositionPrices(brokerId, livePricesMap);
 }
 
 // ─── Stock trading cycle ─────────────────────────────────────────────────
