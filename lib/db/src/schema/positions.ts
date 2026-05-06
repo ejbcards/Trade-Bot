@@ -21,6 +21,7 @@ export const positionsTable = pgTable("positions", {
   contractSymbol: text("contract_symbol"),
   strike: numeric("strike", { precision: 18, scale: 4 }),
   expiry: timestamp("expiry", { withTimezone: true }),
+  highWaterMark: numeric("high_water_mark", { precision: 18, scale: 4 }),
   openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

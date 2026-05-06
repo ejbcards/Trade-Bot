@@ -21,7 +21,7 @@ A full-stack AI trading bot dashboard built with React + Vite (frontend) and Exp
 
 - **Dashboard** — Command center with portfolio overview, bot status control, daily P&L, open positions, activity feed
 - **Broker Connections** — Connect Schwab, Robinhood (and more); test connections, view account value & buying power
-- **Trading Strategies** — Create AI-driven strategies with guardrails (stop-loss, take-profit, max position size, max daily loss)
+- **Trading Strategies** — Create AI-driven strategies with guardrails (stop-loss, rolling stop, take-profit, RSI overbought/oversold, max position size, max daily loss)
 - **Open Positions** — Live positions table across all brokers with unrealized P&L
 - **Trade History** — Filterable trade log with realized P&L, AI signal used, and broker/strategy info
 - **Performance Reports** — Daily/weekly/monthly/quarterly/annual reports with P&L charts, win rate, top symbols, profit factor, Sharpe ratio
@@ -38,7 +38,7 @@ A full-stack AI trading bot dashboard built with React + Vite (frontend) and Exp
 - `brokers` — Broker account connections (Schwab, Robinhood, etc.)
 - `strategies` — Trading strategy configs with AI settings and guardrails
 - `trades` — Historical and open trade records
-- `positions` — Current open positions per broker
+- `positions` — Current open positions per broker (includes `high_water_mark` for rolling stop tracking)
 - `bot_state` — Bot running state (singleton row)
 - `bot_logs` — Bot activity log entries
 - `activity` — Recent activity feed items

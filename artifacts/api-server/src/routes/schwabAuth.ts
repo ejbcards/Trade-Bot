@@ -46,14 +46,14 @@ router.get("/schwab/callback", async (req, res): Promise<void> => {
 
   await db
     .update(brokersTable)
-    .where(eq(brokersTable.brokerType, SCHWAB_BROKER_TYPE))
     .set({
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       accountId: accountHash ?? undefined,
       status: "connected",
       isActive: true,
-    });
+    })
+    .where(eq(brokersTable.brokerType, SCHWAB_BROKER_TYPE));
 
   logger.info({ brokerId, accountHash }, "Schwab broker connected via OAuth");
 

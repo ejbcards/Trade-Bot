@@ -15,6 +15,7 @@ export const strategiesTable = pgTable("strategies", {
   maxDailyLoss: numeric("max_daily_loss", { precision: 18, scale: 4 }).notNull().default("500"),
   stopLossPercent: numeric("stop_loss_percent", { precision: 8, scale: 4 }).notNull().default("2"),
   takeProfitPercent: numeric("take_profit_percent", { precision: 8, scale: 4 }).notNull().default("5"),
+  rollingStopPercent: numeric("rolling_stop_percent", { precision: 8, scale: 4 }).notNull().default("20"),
   aiEnabled: boolean("ai_enabled").notNull().default(true),
   aiModel: text("ai_model"),
   aiSignalThreshold: numeric("ai_signal_threshold", { precision: 5, scale: 4 }).notNull().default("0.7"),

@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { db, botStateTable, botLogsTable, activityTable, strategiesTable, decisionRulesTable, brokersTable } from "@workspace/db";
+import { db, botStateTable, botLogsTable, activityTable, strategiesTable, decisionRulesTable, brokersTable, positionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { evaluateDecisionTable } from "./decisionEngine";
@@ -85,6 +85,9 @@ async function runOptionsCycle(
   strategyId: number,
   stopLossPercent: number,
   takeProfitPercent: number,
+  rollingStopPercent: number,
+  rsiOverbought: number,
+  rsiOversold: number,
   maxPositionUsd: number,
 ): Promise<void> {
   // ── 0. Resolve broker — detect Alpaca to route orders accordingly ───────
@@ -98,6 +101,9 @@ async function runOptionsCycle(
     return;
   }
 
+  const trend = data.trendCondition;
+  const rsi = data.rsi ?? 50;
+
   const indicators = [
     data.rsi !== null ? `RSI:${data.rsi.toFixed(1)}` : null,
     data.maCondition ? `MA:${data.maCondition}` : null,
@@ -110,7 +116,13 @@ async function runOptionsCycle(
   const callPremium = chain?.call?.midPrice ?? chain?.call?.lastPrice ?? 0;
   const putPremium = chain?.put?.midPrice ?? chain?.put?.lastPrice ?? 0;
 
-  // ── 3. Check SL/TP on every open position using that position's own live price ──
+  // ── 3. Layered exit checks on every open position ────────────────────────
+  //
+  //  Priority order:
+  //   A) Indicator exit  — thesis breakdown (trend flip or RSI extreme)
+  //   B) Fixed TP        — ceiling, take profits quickly
+  //   C) Effective stop  — max(rolling stop from peak, fixed SL from entry)
+  //
   const openPositions = await getAllOpenOptionsPositions(brokerId, strategyId);
 
   // Fetch real prices for each held contract — not a generic ATM proxy
@@ -121,7 +133,6 @@ async function runOptionsCycle(
     const isCall = pos.optionType === "call" || pos.side === "long_call";
     const quote = pos.contractSymbol ? liveQuotes[pos.contractSymbol] : null;
 
-    // Use live mark for the specific contract; fall back to ATM premium only if no quote
     const currentPremium = quote?.mark && quote.mark > 0
       ? quote.mark
       : (isCall ? callPremium : putPremium);
@@ -131,27 +142,67 @@ async function runOptionsCycle(
     const entryPrice = parseFloat(pos.entryPrice);
     const changePct = entryPrice > 0 ? ((currentPremium - entryPrice) / entryPrice) * 100 : 0;
 
+    // Update high water mark — track the peak premium this position has reached
+    const storedHWM = pos.highWaterMark ? parseFloat(pos.highWaterMark) : entryPrice;
+    const highWaterMark = Math.max(storedHWM, currentPremium);
+    if (highWaterMark > storedHWM) {
+      await db.update(positionsTable).set({ highWaterMark: String(highWaterMark) }).where(eq(positionsTable.id, pos.id));
+    }
+
+    // Compute effective stop level: rolling stop (once in profit) or fixed SL floor
+    const fixedStopLevel = entryPrice * (1 - stopLossPercent / 100);
+    const rollingStopLevel = highWaterMark * (1 - rollingStopPercent / 100);
+    const usingRollingStop = highWaterMark > entryPrice && rollingStopLevel > fixedStopLevel;
+    const effectiveStopLevel = Math.max(fixedStopLevel, rollingStopLevel);
+
+    // A) Indicator-based exit — exit when the thesis breaks down
+    let exitTrigger: string | null = null;
+    let exitReason = "";
+
+    if (isCall && trend === "bearish") {
+      exitTrigger = "SIGNAL-FLIP";
+      exitReason = `trend turned bearish (RSI:${rsi.toFixed(1)}, MA:${data.maCondition})`;
+    } else if (isCall && rsi >= rsiOverbought) {
+      exitTrigger = "RSI-EXTREME";
+      exitReason = `RSI overbought at ${rsi.toFixed(1)} — momentum exhausted`;
+    } else if (!isCall && trend === "bullish") {
+      exitTrigger = "SIGNAL-FLIP";
+      exitReason = `trend turned bullish (RSI:${rsi.toFixed(1)}, MA:${data.maCondition})`;
+    } else if (!isCall && rsi <= rsiOversold) {
+      exitTrigger = "RSI-EXTREME";
+      exitReason = `RSI oversold at ${rsi.toFixed(1)} — momentum exhausted`;
+    }
+
+    // B) Fixed take profit
+    if (!exitTrigger && changePct >= takeProfitPercent) {
+      exitTrigger = "TAKE-PROFIT";
+      exitReason = `+${changePct.toFixed(1)}% hit TP target (${takeProfitPercent}%)`;
+    }
+
+    // C) Effective stop (rolling or fixed SL)
+    if (!exitTrigger && currentPremium <= effectiveStopLevel) {
+      exitTrigger = usingRollingStop ? "ROLLING-STOP" : "STOP-LOSS";
+      exitReason = usingRollingStop
+        ? `dropped ${rollingStopPercent}% from peak $${highWaterMark.toFixed(2)} → stop $${rollingStopLevel.toFixed(2)}`
+        : `down ${Math.abs(changePct).toFixed(1)}% from entry (floor $${fixedStopLevel.toFixed(2)})`;
+    }
+
     logger.info(
-      { contract: pos.contractSymbol, entryPrice, currentPremium, changePct: changePct.toFixed(1), tpThreshold: takeProfitPercent, slThreshold: -stopLossPercent },
-      "SL/TP check",
+      { contract: pos.contractSymbol, entryPrice, currentPremium, changePct: changePct.toFixed(1), hwm: highWaterMark.toFixed(2), effectiveStop: effectiveStopLevel.toFixed(2), exitTrigger: exitTrigger ?? "none" },
+      "Exit check",
     );
 
-    let trigger: "stop_loss" | "take_profit" | null = null;
-    if (changePct <= -stopLossPercent) trigger = "stop_loss";
-    else if (changePct >= takeProfitPercent) trigger = "take_profit";
-
-    if (trigger) {
-      const label = trigger === "stop_loss" ? "STOP-LOSS" : "TAKE-PROFIT";
+    if (exitTrigger) {
       const result = isAlpaca
         ? await executeAlpacaSellOptionById(activeBroker, pos.id, currentPremium)
         : await executePaperSellOptionById(brokerId, pos.id, currentPremium);
       if (result.executed) {
         const pnlStr = result.realizedPnl >= 0 ? `+$${result.realizedPnl.toFixed(2)}` : `-$${Math.abs(result.realizedPnl).toFixed(2)}`;
-        await logBot("info", `[${label}] ${result.contractSymbol} closed @ $${currentPremium.toFixed(2)} — P&L: ${pnlStr}`, "sell", "SPY");
+        await logBot("info", `[${exitTrigger}] ${result.contractSymbol} @ $${currentPremium.toFixed(2)} — ${exitReason} — P&L: ${pnlStr}`, "sell", "SPY");
         await db.insert(activityTable).values({
           type: "trade_closed",
-          title: `${label}: ${isCall ? "CALL" : "PUT"} closed`,
-          description: `${result.contractSymbol} @ $${currentPremium.toFixed(2)} premium — P&L: ${pnlStr}`,
+          title: `${exitTrigger}: ${isCall ? "CALL" : "PUT"} closed`,
+          description: `${result.contractSymbol} @ $${currentPremium.toFixed(2)} — ${exitReason} — P&L: ${pnlStr}`,
         });
         await incrementBotCounters(1, result.realizedPnl);
       }
@@ -159,8 +210,7 @@ async function runOptionsCycle(
   }
 
   // ── 4. Determine direction signal ──────────────────────────────────────
-  const trend = data.trendCondition;
-  const rsi = data.rsi ?? 50;
+  // (trend + rsi already declared above for use in exit checks)
 
   // Relaxed RSI gates for day trading (72→78 / 28→22)
   let direction: "call" | "put" | null = null;
@@ -378,8 +428,11 @@ export async function runTradingCycle() {
   if (assetType === "options") {
     const stopLossPercent = parseFloat(strategy.stopLossPercent ?? "50");
     const takeProfitPercent = parseFloat(strategy.takeProfitPercent ?? "100");
+    const rollingStopPercent = parseFloat(strategy.rollingStopPercent ?? "20");
+    const rsiOverbought = parseFloat(strategy.rsiOverbought ?? "82");
+    const rsiOversold = parseFloat(strategy.rsiOversold ?? "18");
     const maxPositionUsd = parseFloat(strategy.maxPositionSize ?? "2000");
-    await runOptionsCycle(brokerId, strategy.id, stopLossPercent, takeProfitPercent, maxPositionUsd);
+    await runOptionsCycle(brokerId, strategy.id, stopLossPercent, takeProfitPercent, rollingStopPercent, rsiOverbought, rsiOversold, maxPositionUsd);
   } else {
     const rules = await db.select().from(decisionRulesTable).where(eq(decisionRulesTable.strategyId, strategy.id));
     await runStocksCycle(brokerId, strategy, rules);
