@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { db, botStateTable, botLogsTable, activityTable, strategiesTable, decisionRulesTable, brokersTable, positionsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { evaluateDecisionTable } from "./decisionEngine";
 import { fetchMarketData, fetchSpyOptionsChain } from "./marketData";
@@ -404,6 +404,83 @@ async function runStocksCycle(
   if (Object.keys(prices).length > 0) await updatePaperPositionPrices(brokerId, prices);
 }
 
+// ─── Weekend close — flatten all positions by 3:30 PM ET on Fridays ─────────
+//
+// Options lose time value over the weekend without any chance to react.
+// This routine closes every open position regardless of P&L, then stops the bot.
+//
+
+async function closeAllPositionsForWeekend(): Promise<void> {
+  const openPositions = await db
+    .select({
+      id: positionsTable.id,
+      brokerId: positionsTable.brokerId,
+      strategyId: positionsTable.strategyId,
+      contractSymbol: positionsTable.contractSymbol,
+      optionType: positionsTable.optionType,
+      side: positionsTable.side,
+      entryPrice: positionsTable.entryPrice,
+    })
+    .from(positionsTable);
+
+  if (openPositions.length === 0) {
+    await logBot("info", "[WEEKEND-CLOSE] No open positions to close — already flat", "weekend_close");
+    return;
+  }
+
+  await logBot("info", `[WEEKEND-CLOSE] Closing ${openPositions.length} position(s) before weekend`, "weekend_close");
+
+  // Fetch live quotes for all held contracts in one shot
+  const contractSymbols = openPositions.map((p) => p.contractSymbol).filter((s): s is string => !!s);
+  const liveQuotes = contractSymbols.length > 0 ? await fetchLiveOptionPrices(contractSymbols) : {};
+
+  // Resolve brokers once (keyed by brokerId)
+  const brokerIds = [...new Set(openPositions.map((p) => p.brokerId))];
+  const brokerRows = await db.select().from(brokersTable).where(inArray(brokersTable.id, brokerIds));
+  const brokerMap = Object.fromEntries(brokerRows.map((b) => [b.id, b]));
+
+  let totalRealizedPnl = 0;
+  let closedCount = 0;
+
+  for (const pos of openPositions) {
+    const broker = brokerMap[pos.brokerId];
+    // Re-fetch broker if not in initial batch (multiple brokers edge case)
+    const activeBroker = broker ?? (await db.select().from(brokersTable).where(eq(brokersTable.id, pos.brokerId)).then((r) => r[0]));
+    if (!activeBroker) continue;
+
+    const isAlpaca = activeBroker.brokerType === "alpaca" && !!activeBroker.apiKey && !!activeBroker.apiSecret;
+    const quote = pos.contractSymbol ? liveQuotes[pos.contractSymbol] : null;
+    const closingPrice = (quote?.mark && quote.mark > 0) ? quote.mark : parseFloat(pos.entryPrice);
+
+    const result = isAlpaca
+      ? await executeAlpacaSellOptionById(activeBroker, pos.id, closingPrice)
+      : await executePaperSellOptionById(pos.brokerId, pos.id, closingPrice);
+
+    if (result.executed) {
+      totalRealizedPnl += result.realizedPnl;
+      closedCount++;
+      const pnlStr = result.realizedPnl >= 0 ? `+$${result.realizedPnl.toFixed(2)}` : `-$${Math.abs(result.realizedPnl).toFixed(2)}`;
+      await logBot(
+        "info",
+        `[WEEKEND-CLOSE] ${result.contractSymbol} closed @ $${closingPrice.toFixed(2)} — P&L: ${pnlStr}`,
+        "sell",
+        "SPY",
+      );
+    }
+  }
+
+  const totalStr = totalRealizedPnl >= 0 ? `+$${totalRealizedPnl.toFixed(2)}` : `-$${Math.abs(totalRealizedPnl).toFixed(2)}`;
+  await logBot("info", `[WEEKEND-CLOSE] Done — ${closedCount} position(s) closed, total P&L: ${totalStr}`, "weekend_close");
+  await db.insert(activityTable).values({
+    type: "bot_stopped",
+    title: "Weekend Close — All Positions Flattened",
+    description: `${closedCount} position(s) closed before weekend. Total realized P&L: ${totalStr}`,
+  });
+
+  // Stop the bot so it won't re-enter over the weekend
+  await db.update(botStateTable).set({ isRunning: false, tradesExecutedToday: 0, dailyPnl: "0" });
+}
+
 // ─── Main trading loop ───────────────────────────────────────────────────
 
 export async function runTradingCycle() {
@@ -467,6 +544,14 @@ export function startScheduler() {
       await db.insert(activityTable).values({ type: "bot_started", title: "Bot Started — Market Open", description: "Trading bot automatically activated at 9:30 AM ET" });
       await refreshSchedule();
     }
+  }, { timezone: ET_TZ });
+
+  // Friday 3:30 PM ET — close all positions before the weekend
+  // Runs 30 minutes before market close so we get good liquidity on exits.
+  cron.schedule("30 15 * * 5", async () => {
+    logger.info("Friday 3:30 PM ET — closing all positions for weekend");
+    await closeAllPositionsForWeekend().catch((e) => logger.error(e, "Weekend close failed"));
+    await refreshSchedule();
   }, { timezone: ET_TZ });
 
   cron.schedule("0 16 * * 1-5", async () => {

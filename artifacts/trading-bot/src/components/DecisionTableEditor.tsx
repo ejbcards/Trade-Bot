@@ -289,7 +289,7 @@ export function DecisionTableEditor({ strategyId, strategyName }: Props) {
         priceChangePercent: testForm.priceChangePercent !== "" ? parseFloat(testForm.priceChangePercent) : null,
       },
     }, {
-      onSuccess: (res) => setTestResult(res),
+      onSuccess: (res) => setTestResult({ ...res, matchedRuleName: res.matchedRuleName ?? null }),
       onError: (e: any) => toast.error("Evaluation failed", { description: e.message }),
     });
   }
