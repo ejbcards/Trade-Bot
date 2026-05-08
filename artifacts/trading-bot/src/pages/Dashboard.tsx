@@ -208,8 +208,8 @@ export default function Dashboard() {
 
         {/* Top Summary Cards */}
         {isLoadingSummary ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-            {Array.from({ length: 5 }).map((_, i) => (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-32 rounded-xl" />
             ))}
           </div>
@@ -221,7 +221,7 @@ export default function Dashboard() {
           const isLive = totalLiveUnrealizedPnl !== null;
 
           return (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               {/* Account Value */}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -257,6 +257,23 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
 
+              {/* Daily Total Return % */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Daily Return</CardTitle>
+                  {liveDailyPnlPercent >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-500" /> : <TrendingDown className="w-4 h-4 text-destructive" />}
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-2xl font-bold ${liveDailyPnlPercent >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                    {liveDailyPnlPercent >= 0 ? "+" : ""}{formatPercent(liveDailyPnlPercent)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {summary.tradesExecutedToday} trade{summary.tradesExecutedToday !== 1 ? "s" : ""} closed today
+                    {isLive && <span className="text-emerald-500/70"> · live</span>}
+                  </p>
+                </CardContent>
+              </Card>
+
               {/* Today Invested */}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -265,7 +282,7 @@ export default function Dashboard() {
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(summary.totalInvested)}</div>
                   <p className={`text-xs mt-1 ${liveReturn >= 0 ? "text-emerald-500/80" : "text-destructive/80"}`}>
-                    {liveReturn >= 0 ? "+" : ""}{formatPercent(liveReturn)} return
+                    {liveReturn >= 0 ? "+" : ""}{formatPercent(liveReturn)} unrealized return
                     {isLive && <span className="text-emerald-500/60 ml-1">· live</span>}
                   </p>
                 </CardContent>

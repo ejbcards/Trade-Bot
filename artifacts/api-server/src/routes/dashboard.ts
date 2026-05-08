@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, gte, desc } from "drizzle-orm";
+import { eq, gte, desc, and, isNotNull } from "drizzle-orm";
 import { db, brokersTable, strategiesTable, tradesTable, positionsTable, botStateTable, activityTable } from "@workspace/db";
 import { GetRecentActivityQueryParams } from "@workspace/api-zod";
 import { startOfDay, subWeeks, subMonths } from "date-fns";
@@ -17,13 +17,13 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     db.select().from(positionsTable),
     db.select().from(botStateTable).limit(1),
     db.select().from(tradesTable).where(
-      gte(tradesTable.openedAt, startOfDay(new Date()))
+      and(isNotNull(tradesTable.closedAt), gte(tradesTable.closedAt, startOfDay(new Date())), eq(tradesTable.status, "closed"))
     ),
     db.select().from(tradesTable).where(
-      gte(tradesTable.openedAt, subWeeks(new Date(), 1))
+      and(isNotNull(tradesTable.closedAt), gte(tradesTable.closedAt, subWeeks(new Date(), 1)), eq(tradesTable.status, "closed"))
     ),
     db.select().from(tradesTable).where(
-      gte(tradesTable.openedAt, subMonths(new Date(), 1))
+      and(isNotNull(tradesTable.closedAt), gte(tradesTable.closedAt, subMonths(new Date(), 1)), eq(tradesTable.status, "closed"))
     ),
   ]);
 
@@ -31,8 +31,7 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
   const totalBuyingPower = brokers.reduce((sum, b) => sum + (b.buyingPower ? parseFloat(b.buyingPower) : 0), 0);
   const totalUnrealizedPnl = positions.reduce((sum, p) => sum + parsePnl(p.unrealizedPnl), 0);
 
-  const todayClosedTrades = recentTrades.filter((t) => t.status === "closed");
-  const dailyRealizedPnl = todayClosedTrades.reduce((sum, t) => sum + parsePnl(t.realizedPnl), 0);
+  const dailyRealizedPnl = recentTrades.reduce((sum, t) => sum + parsePnl(t.realizedPnl), 0);
   const dailyPnl = dailyRealizedPnl + totalUnrealizedPnl;
   const dailyPnlPercent = totalAccountValue > 0 ? (dailyPnl / totalAccountValue) * 100 : 0;
 
