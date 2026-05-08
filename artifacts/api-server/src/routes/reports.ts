@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, gte, lte, and, desc } from "drizzle-orm";
+import { eq, gte, lte, and, isNotNull } from "drizzle-orm";
 import { db, tradesTable } from "@workspace/db";
 import { GetPerformanceReportQueryParams, GetPnlChartQueryParams, GetWinRateStatsQueryParams, GetTopSymbolsQueryParams } from "@workspace/api-zod";
 import { subDays, subWeeks, subMonths, subQuarters, subYears, startOfDay, format } from "date-fns";
@@ -47,8 +47,9 @@ router.get("/reports/performance", async (req, res): Promise<void> => {
   const { startDate, endDate } = getPeriodDates(period);
 
   const conditions = [
-    gte(tradesTable.openedAt, startDate),
-    lte(tradesTable.openedAt, endDate),
+    isNotNull(tradesTable.closedAt),
+    gte(tradesTable.closedAt, startDate),
+    lte(tradesTable.closedAt, endDate),
     eq(tradesTable.status, "closed"),
   ];
   if (brokerId != null) conditions.push(eq(tradesTable.brokerId, brokerId));
@@ -117,8 +118,9 @@ router.get("/reports/pnl-chart", async (req, res): Promise<void> => {
   const { startDate, endDate } = getPeriodDates(period ?? "monthly");
 
   const conditions = [
-    gte(tradesTable.openedAt, startDate),
-    lte(tradesTable.openedAt, endDate),
+    isNotNull(tradesTable.closedAt),
+    gte(tradesTable.closedAt, startDate),
+    lte(tradesTable.closedAt, endDate),
     eq(tradesTable.status, "closed"),
   ];
   if (brokerId != null) conditions.push(eq(tradesTable.brokerId, brokerId));
@@ -127,12 +129,12 @@ router.get("/reports/pnl-chart", async (req, res): Promise<void> => {
     .select()
     .from(tradesTable)
     .where(and(...conditions))
-    .orderBy(tradesTable.openedAt);
+    .orderBy(tradesTable.closedAt);
 
   // Group by date
   const byDate = new Map<string, { pnl: number; count: number }>();
   for (const trade of trades) {
-    const date = format(trade.openedAt, "yyyy-MM-dd");
+    const date = format(trade.closedAt!, "yyyy-MM-dd");
     const existing = byDate.get(date) ?? { pnl: 0, count: 0 };
     byDate.set(date, {
       pnl: existing.pnl + parsePnl(trade.realizedPnl),
@@ -167,8 +169,9 @@ router.get("/reports/win-rate", async (req, res): Promise<void> => {
     .from(tradesTable)
     .where(
       and(
-        gte(tradesTable.openedAt, startDate),
-        lte(tradesTable.openedAt, endDate),
+        isNotNull(tradesTable.closedAt),
+        gte(tradesTable.closedAt, startDate),
+        lte(tradesTable.closedAt, endDate),
         eq(tradesTable.status, "closed"),
       ),
     );
@@ -205,8 +208,9 @@ router.get("/reports/top-symbols", async (req, res): Promise<void> => {
     .from(tradesTable)
     .where(
       and(
-        gte(tradesTable.openedAt, startDate),
-        lte(tradesTable.openedAt, endDate),
+        isNotNull(tradesTable.closedAt),
+        gte(tradesTable.closedAt, startDate),
+        lte(tradesTable.closedAt, endDate),
         eq(tradesTable.status, "closed"),
       ),
     );
