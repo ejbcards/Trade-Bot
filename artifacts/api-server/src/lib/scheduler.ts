@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { db, botStateTable, botLogsTable, activityTable, strategiesTable, decisionRulesTable, brokersTable, positionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
 import { evaluateDecisionTable } from "./decisionEngine";
 import { fetchMarketData, fetchSpyOptionsChain } from "./marketData";
@@ -16,7 +16,7 @@ import {
   updatePaperPositionPrices,
   MAX_CONCURRENT_OPTIONS,
 } from "./paperTrading";
-import { executeAlpacaBuyOption, executeAlpacaSellOptionById, syncAlpacaPositionPrices } from "./alpacaBroker";
+import { executeAlpacaBuyOption, executeAlpacaSellOptionById, syncAlpacaPositionPrices, getAlpacaAccount } from "./alpacaBroker";
 
 const ET_TZ = "America/New_York";
 
@@ -492,6 +492,31 @@ export function startScheduler() {
     await db.update(botStateTable).set({ tradesExecutedToday: 0, dailyPnl: "0" }).where(eq(botStateTable.id, 1));
     await logBot("info", "Daily counters reset at midnight ET", "daily_reset");
   }, { timezone: ET_TZ });
+
+  // Refresh Alpaca account equity + buying power every minute — keeps dashboard
+  // in sync with Alpaca even when the bot is stopped or outside market hours.
+  cron.schedule("* * * * *", async () => {
+    try {
+      const alpacaBrokers = await db
+        .select()
+        .from(brokersTable)
+        .where(and(eq(brokersTable.brokerType, "alpaca"), eq(brokersTable.status, "connected")));
+
+      for (const broker of alpacaBrokers) {
+        if (!broker.apiKey || !broker.apiSecret) continue;
+        const isPaper = !broker.accountId || broker.accountId.startsWith("paper");
+        const account = await getAlpacaAccount(broker.apiKey, broker.apiSecret, isPaper);
+        if (account) {
+          await db
+            .update(brokersTable)
+            .set({ accountValue: String(account.equity), buyingPower: String(account.buyingPower) })
+            .where(eq(brokersTable.id, broker.id));
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, "Alpaca account value refresh failed");
+    }
+  });
 
   logger.info("Market scheduler ready — live market data + SPY options via Yahoo Finance");
 }
