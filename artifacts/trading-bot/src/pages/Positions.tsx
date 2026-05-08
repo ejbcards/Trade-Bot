@@ -137,7 +137,7 @@ export default function Positions() {
                       <TableHead className="text-right">Mkt Value</TableHead>
                       <TableHead className="text-right">Unrealized P&L</TableHead>
                       <TableHead className="text-right">Return %</TableHead>
-                      <TableHead className="hidden md:table-cell text-right">Opened</TableHead>
+                      <TableHead className="text-right">Date Bought</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -201,8 +201,15 @@ export default function Positions() {
                           <TableCell className={`text-right ${pos.unrealizedPnlPercent != null && pos.unrealizedPnlPercent >= 0 ? "text-emerald-500" : "text-destructive"}`}>
                             {pos.unrealizedPnlPercent != null ? (pos.unrealizedPnlPercent >= 0 ? "+" : "") + formatPercent(pos.unrealizedPnlPercent) : "—"}
                           </TableCell>
-                          <TableCell className="hidden md:table-cell text-right text-muted-foreground text-xs">
-                            {formatDate(pos.openedAt)}
+                          <TableCell className="text-right text-xs">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className="font-medium text-foreground">
+                                {new Date(pos.openedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {new Date(pos.openedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+                              </span>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
