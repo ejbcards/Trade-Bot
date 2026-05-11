@@ -1,4 +1,5 @@
 import cron from "node-cron";
+import { emitBotTrade, type BotTradeType } from "./botEvents";
 import { db, botStateTable, botLogsTable, activityTable, strategiesTable, decisionRulesTable, brokersTable, positionsTable } from "@workspace/db";
 import { generateAndSaveRecap } from "../routes/recap";
 import { eq, and, inArray } from "drizzle-orm";
@@ -260,6 +261,22 @@ async function runOptionsCycle(
           title: `${exitTrigger}: ${isCall ? "CALL" : "PUT"} closed`,
           description: `${result.contractSymbol} @ $${currentPremium.toFixed(2)} — ${exitReason} — P&L: ${pnlStr}`,
         });
+        const exitTypeMap: Record<string, BotTradeType> = {
+          "TAKE-PROFIT": "take_profit",
+          "STOP-LOSS": "stop_loss",
+          "ROLLING-STOP": "rolling_stop",
+          "SIGNAL-FLIP": "sell",
+          "RSI-EXTREME": "sell",
+        };
+        emitBotTrade({
+          type: exitTypeMap[exitTrigger] ?? "sell",
+          direction: isCall ? "call" : "put",
+          symbol: "SPY",
+          contract: result.contractSymbol ?? undefined,
+          price: currentPremium,
+          pnl: result.realizedPnl,
+          reason: exitReason,
+        });
         await incrementBotCounters(1, result.realizedPnl);
       }
     }
@@ -342,6 +359,15 @@ async function runOptionsCycle(
         title: `Direction Flip: ${oppositeType.toUpperCase()} → ${direction.toUpperCase()}`,
         description: `${result.contractSymbol} closed @ $${closePremium.toFixed(2)} — P&L: ${pnlStr}`,
       });
+      emitBotTrade({
+        type: "flip_close",
+        direction: oppositeType as "call" | "put",
+        symbol: "SPY",
+        contract: result.contractSymbol ?? undefined,
+        price: closePremium,
+        pnl: result.realizedPnl,
+        reason: `Trend reversed to ${direction.toUpperCase()} — closing ${oppositeType.toUpperCase()} · P&L: ${pnlStr}`,
+      });
       await incrementBotCounters(1, result.realizedPnl);
     }
   }
@@ -382,6 +408,16 @@ async function runOptionsCycle(
       type: "trade_opened",
       title: `${brokerLabel} BUY ${direction.toUpperCase()}: SPY`,
       description: `${r.contracts}x ${contract.contractSymbol} @ $${contract.midPrice.toFixed(2)} premium (cost $${r.cost.toFixed(2)}) — strike $${contract.strike}, exp ${contract.expiry.toISOString().slice(0, 10)}`,
+    });
+    emitBotTrade({
+      type: "buy",
+      direction,
+      symbol: "SPY",
+      contract: contract.contractSymbol,
+      price: contract.midPrice,
+      quantity: r.contracts,
+      cost: r.cost,
+      reason: reason,
     });
     const [s] = await db.select().from(botStateTable).limit(1);
     if (s) {
@@ -432,6 +468,14 @@ async function runStocksCycle(
           const pnlStr = result.realizedPnl >= 0 ? `+$${result.realizedPnl.toFixed(2)}` : `-$${Math.abs(result.realizedPnl).toFixed(2)}`;
           await logBot("info", `[${label}] ${symbol} @ $${data.currentPrice.toFixed(2)} — P&L: ${pnlStr}`, "sell", symbol);
           await db.insert(activityTable).values({ type: "trade_closed", title: `${label}: ${symbol} closed`, description: `Paper trade closed at $${data.currentPrice.toFixed(2)} — P&L: ${pnlStr}` });
+          emitBotTrade({
+            type: trigger === "take_profit" ? "take_profit" : "stop_loss",
+            direction: "stock",
+            symbol,
+            price: data.currentPrice,
+            pnl: result.realizedPnl,
+            reason: `${label} triggered · P&L: ${pnlStr}`,
+          });
           const [s] = await db.select().from(botStateTable).limit(1);
           if (s) await db.update(botStateTable).set({ tradesExecutedToday: (s.tradesExecutedToday ?? 0) + 1, dailyPnl: String(parseFloat(s.dailyPnl ?? "0") + result.realizedPnl) }).where(eq(botStateTable.id, s.id));
         }
@@ -462,6 +506,15 @@ async function runStocksCycle(
         const r = await executePaperBuy(brokerId, strategy.id, symbol, data.currentPrice, maxPositionSize * decision.quantityMultiplier);
         if (r.executed) {
           await db.insert(activityTable).values({ type: "trade_opened", title: `Paper BUY: ${symbol}`, description: `Bought ${r.quantity} shares @ $${data.currentPrice.toFixed(2)} (cost $${r.cost.toFixed(2)})` });
+          emitBotTrade({
+            type: "buy",
+            direction: "stock",
+            symbol,
+            price: data.currentPrice,
+            quantity: r.quantity,
+            cost: r.cost,
+            reason: decision.reason,
+          });
           const [s] = await db.select().from(botStateTable).limit(1);
           if (s) await db.update(botStateTable).set({ tradesExecutedToday: (s.tradesExecutedToday ?? 0) + 1 }).where(eq(botStateTable.id, s.id));
         }
@@ -470,6 +523,14 @@ async function runStocksCycle(
         if (r.executed) {
           const pnlStr = r.realizedPnl >= 0 ? `+$${r.realizedPnl.toFixed(2)}` : `-$${Math.abs(r.realizedPnl).toFixed(2)}`;
           await db.insert(activityTable).values({ type: "trade_closed", title: `Paper SELL: ${symbol}`, description: `Sold @ $${data.currentPrice.toFixed(2)} — P&L: ${pnlStr}` });
+          emitBotTrade({
+            type: "sell",
+            direction: "stock",
+            symbol,
+            price: data.currentPrice,
+            pnl: r.realizedPnl,
+            reason: `${decision.reason} · P&L: ${pnlStr}`,
+          });
           const [s] = await db.select().from(botStateTable).limit(1);
           if (s) await db.update(botStateTable).set({ tradesExecutedToday: (s.tradesExecutedToday ?? 0) + 1, dailyPnl: String(parseFloat(s.dailyPnl ?? "0") + r.realizedPnl) }).where(eq(botStateTable.id, s.id));
         }

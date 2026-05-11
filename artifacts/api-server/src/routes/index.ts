@@ -12,6 +12,7 @@ import schwabAuthRouter from "./schwabAuth";
 import anthropicRouter from "./anthropic";
 import recapRouter from "./recap";
 import botContextRouter from "./botContext";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(dashboardRouter);
 router.use(schwabAuthRouter);
 router.use(anthropicRouter);
 router.use(recapRouter);
+router.use(notificationsRouter);
 
 export default router;
