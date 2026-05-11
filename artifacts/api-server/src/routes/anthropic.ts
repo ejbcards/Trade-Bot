@@ -50,18 +50,18 @@ async function buildSystemPrompt(): Promise<string> {
         ),
       )
       .orderBy(desc(tradesTable.closedAt))
-      .limit(20),
+      .limit(10),
     db
       .select()
       .from(tradesTable)
       .orderBy(desc(tradesTable.closedAt))
-      .limit(10),
+      .limit(5),
     db
       .select()
       .from(botLogsTable)
       .where(gte(botLogsTable.createdAt, dayStart))
       .orderBy(desc(botLogsTable.createdAt))
-      .limit(40),
+      .limit(15),
     fetchMarketData("SPY").catch(() => null),
     fetchVixData().catch(() => null),
   ]);
@@ -100,152 +100,85 @@ async function buildSystemPrompt(): Promise<string> {
 
   const strategiesSummary =
     strategies.length === 0
-      ? "No active strategies."
+      ? "none"
       : strategies
-          .map(
-            (s) =>
-              `  - ${s.name} (${s.aiModel ?? "unknown model"}): ` +
-              `stop-loss ${s.stopLossPercent ?? "N/A"}%, take-profit ${s.takeProfitPercent ?? "N/A"}%, ` +
-              `max position size $${s.maxPositionSize ?? "N/A"}, max daily loss $${s.maxDailyLoss ?? "N/A"}`,
-          )
-          .join("\n");
+          .map((s) => `${s.name}: SL ${s.stopLossPercent ?? "?"}% TP ${s.takeProfitPercent ?? "?"}% maxPos $${s.maxPositionSize ?? "?"}`)
+          .join("; ");
 
   const recentTradesSummary =
     recentTrades.length === 0
-      ? "No recent trades."
+      ? "none"
       : recentTrades
-          .map(
-            (t) =>
-              `  - ${t.symbol} ${t.side} ${t.quantity} @ $${t.entryPrice}: ` +
-              `realized P&L $${parsePnl(t.realizedPnl).toFixed(2)} (${t.status})`,
-          )
-          .join("\n");
+          .map((t) => `${t.symbol} ${t.side} x${t.quantity} P&L $${parsePnl(t.realizedPnl).toFixed(2)}`)
+          .join(", ");
 
   const now = new Date().toLocaleString("en-US", {
     timeZone: "America/New_York",
-    dateStyle: "full",
+    dateStyle: "medium",
     timeStyle: "short",
   });
 
-  // --- Live market analysis ---
-  const marketSection = spyData
-    ? `SPY Price: $${spyData.currentPrice.toFixed(2)} (${spyData.priceChangePercent != null ? (spyData.priceChangePercent >= 0 ? "+" : "") + spyData.priceChangePercent.toFixed(2) + "%" : "N/A"})
-RSI (14): ${spyData.rsi != null ? spyData.rsi.toFixed(1) : "N/A"}
-Trend: ${spyData.trendCondition ?? "N/A"}
-50-day MA: price is ${spyData.maCondition ?? "N/A"} moving average
-Volume: ${spyData.volumeCondition ?? "N/A"}${spyData.candlestickPattern ? `\nCandlestick pattern: ${spyData.candlestickPattern}` : ""}`
-    : "Market data currently unavailable.";
+  // --- Live market (compact single-line format) ---
+  const spyLine = spyData
+    ? `SPY $${spyData.currentPrice.toFixed(2)} (${spyData.priceChangePercent != null ? (spyData.priceChangePercent >= 0 ? "+" : "") + spyData.priceChangePercent.toFixed(2) + "%" : "?"}) | RSI ${spyData.rsi?.toFixed(1) ?? "?"} | trend:${spyData.trendCondition ?? "?"} | MA:${spyData.maCondition ?? "?"}`
+    : "SPY data unavailable";
 
-  const vixSection = vixData
-    ? `VIX Price: ${vixData.price.toFixed(2)} (${vixData.dayChangePercent >= 0 ? "+" : ""}${vixData.dayChangePercent.toFixed(2)}% today)
-Volatility Regime: ${vixData.isHighVolatility ? "HIGH — CALL entries blocked, PUT entries allowed, stop losses tightened" : "NORMAL — all entries permitted per strategy guardrails"}`
-    : "VIX data currently unavailable.";
+  const isHighVol = vixData?.isHighVolatility ?? false;
+  const vixLine = vixData
+    ? `VIX ${vixData.price.toFixed(2)} (${vixData.dayChangePercent >= 0 ? "+" : ""}${vixData.dayChangePercent.toFixed(2)}%) | regime:${isHighVol ? "HIGH — CALLs blocked, SL tightened" : "NORMAL"}`
+    : "VIX data unavailable";
 
-  // --- Pending signal (what the bot would do right now) ---
+  // --- Pending signal ---
   const trend = spyData?.trendCondition ?? null;
   const rsi = spyData?.rsi ?? 50;
-  const isHighVol = vixData?.isHighVolatility ?? false;
-  let signalDirection: string;
-  let signalReason: string;
+  let signal: string;
 
   if (!spyData) {
-    signalDirection = "UNAVAILABLE";
-    signalReason = "Cannot compute signal — market data unavailable";
+    signal = "UNAVAILABLE — market data missing";
   } else if (trend === "bullish" && rsi < 82) {
-    if (isHighVol) {
-      signalDirection = "BLOCKED (would be CALL)";
-      signalReason = `SPY is bullish (RSI ${rsi.toFixed(1)}) but CALL entry is blocked by high-vol regime`;
-    } else {
-      signalDirection = "CALL";
-      signalReason = `SPY bullish: MA ${spyData.maCondition ?? "N/A"}, RSI ${rsi.toFixed(1)} — bot would BUY a CALL`;
-    }
+    signal = isHighVol
+      ? `BLOCKED (bullish RSI ${rsi.toFixed(1)}) — high-vol, CALL entry blocked`
+      : `CALL — bullish, MA:${spyData.maCondition}, RSI ${rsi.toFixed(1)}`;
   } else if (trend === "bearish" && rsi > 18) {
-    signalDirection = "PUT";
-    signalReason = isHighVol
-      ? `SPY bearish + high-vol regime — bot would BUY a PUT with tightened stop loss (RSI ${rsi.toFixed(1)})`
-      : `SPY bearish: MA ${spyData.maCondition ?? "N/A"}, RSI ${rsi.toFixed(1)} — bot would BUY a PUT`;
+    signal = `PUT — bearish, RSI ${rsi.toFixed(1)}${isHighVol ? ", high-vol (SL tightened)" : ""}`;
   } else if (rsi >= 82) {
-    signalDirection = "HOLD (RSI overbought)";
-    signalReason = `RSI at ${rsi.toFixed(1)} — no entries until momentum cools`;
+    signal = `HOLD — RSI overbought (${rsi.toFixed(1)})`;
   } else if (rsi <= 18) {
-    signalDirection = "HOLD (RSI oversold)";
-    signalReason = `RSI at ${rsi.toFixed(1)} — no entries until bounce confirmed`;
+    signal = `HOLD — RSI oversold (${rsi.toFixed(1)})`;
   } else {
-    signalDirection = "HOLD (neutral)";
-    signalReason = `Neutral trend — waiting for directional signal (MA: ${spyData.maCondition ?? "N/A"}, RSI: ${rsi.toFixed(1)})`;
+    signal = `HOLD — neutral (MA:${spyData.maCondition}, RSI ${rsi.toFixed(1)})`;
   }
 
-  // --- Recent bot decision logs (today only, key decisions) ---
-  const decisionKeywords = [
-    "BUY", "SELL", "HOLD", "SKIP", "TAKE-PROFIT", "STOP-LOSS", "ROLLING-STOP",
-    "FLIP", "VOL-REGIME", "VOL-FILTER", "WEEKEND-CLOSE", "RSI", "VIX", "SIGNAL",
-  ];
+  // --- Decision logs (compact, 6 most recent key entries) ---
+  const decisionKeywords = ["BUY", "SELL", "HOLD", "SKIP", "TAKE-PROFIT", "STOP-LOSS", "ROLLING-STOP", "FLIP", "VOL-REGIME", "VOL-FILTER", "RSI", "VIX"];
   const decisionLogs = recentLogs
-    .filter((l) => decisionKeywords.some((kw) => l.message.toUpperCase().includes(kw.toUpperCase())))
-    .slice(0, 20);
+    .filter((l) => decisionKeywords.some((kw) => l.message.toUpperCase().includes(kw)))
+    .slice(0, 6)
+    .map((l) => {
+      const ts = new Date(l.createdAt).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit" });
+      return `${ts} ${l.message}`;
+    })
+    .join("\n");
 
-  const logsSection = decisionLogs.length === 0
-    ? "No decision logs for today yet."
-    : decisionLogs
-        .map((l) => {
-          const ts = new Date(l.createdAt).toLocaleTimeString("en-US", {
-            timeZone: "America/New_York",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          });
-          const sym = l.symbol ? ` [${l.symbol}]` : "";
-          const act = l.action ? ` (${l.action})` : "";
-          return `  [${ts} ET]${sym}${act} ${l.message}`;
-        })
-        .join("\n");
+  return `You are GoldenMoose, an AI trading assistant. Friendly, candid, conversational. You have live portfolio + market data injected below — use it to give specific, grounded answers. Be concise unless asked for detail. Never guarantee outcomes.
 
-  return `You are the GoldenMoose AI trading assistant — a knowledgeable, candid trading companion who speaks conversationally. You have real-time access to live market data, bot decision logs, portfolio status, and current signals refreshed at message time.
+Time (ET): ${now}
+Bot: ${state?.isRunning ? "RUNNING" : "STOPPED"}${state?.activeStrategyId ? ` | strategy #${state.activeStrategyId}` : ""}
 
-Current time (ET): ${now}
+MARKET: ${spyLine}
+VIX: ${vixLine}
+SIGNAL NOW: ${signal}
 
-=== BOT STATUS ===
-Running: ${state?.isRunning ? "YES" : "NO"}
-${state?.activeStrategyId ? `Active Strategy ID: ${state.activeStrategyId}` : "No active strategy"}
-${state?.activeBrokerId ? `Active Broker ID: ${state.activeBrokerId}` : ""}
+PORTFOLIO: value $${totalAccountValue.toLocaleString("en-US", { maximumFractionDigits: 0 })} | buying power $${totalBuyingPower.toLocaleString("en-US", { maximumFractionDigits: 0 })} | daily P&L $${dailyPnl.toFixed(2)} (${dailyPnlPercent.toFixed(2)}%) | realized $${dailyRealizedPnl.toFixed(2)} | unrealized $${totalUnrealizedPnl.toFixed(2)}
 
-=== LIVE MARKET ANALYSIS ===
-${marketSection}
+POSITIONS (${positions.length}): ${positions.length === 0 ? "none" : positions.map((p) => `${p.symbol} qty=${p.quantity} entry $${p.entryPrice} cur $${p.currentPrice ?? "?"} P&L $${parsePnl(p.unrealizedPnl).toFixed(2)}`).join("; ")}
 
-=== VOLATILITY REGIME ===
-${vixSection}
+STRATEGIES: ${strategiesSummary}
 
-=== PENDING SIGNAL (what the bot would do RIGHT NOW) ===
-Direction: ${signalDirection}
-Reasoning: ${signalReason}
+RECENT TRADES: ${recentTradesSummary}
 
-=== PORTFOLIO OVERVIEW ===
-Total Account Value: $${totalAccountValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-Buying Power: $${totalBuyingPower.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-Daily P&L: $${dailyPnl.toFixed(2)} (${dailyPnlPercent.toFixed(2)}%)
-  - Realized today: $${dailyRealizedPnl.toFixed(2)}
-  - Unrealized: $${totalUnrealizedPnl.toFixed(2)}
-
-=== OPEN POSITIONS (${positions.length}) ===
-${positionsSummary}
-
-=== ACTIVE STRATEGIES ===
-${strategiesSummary}
-
-=== RECENT TRADES ===
-${recentTradesSummary}
-
-=== TODAY'S BOT DECISION LOG ===
-${logsSection}
-
-=== YOUR ROLE ===
-- Answer questions about the current portfolio, positions, P&L, and trading activity.
-- Explain what the bot is doing and why — use the live market analysis, pending signal, and decision log above to give specific, accurate answers.
-- Interpret the decision log: explain why the bot held, blocked a trade, exited, or flipped direction.
-- Offer thoughtful trading insights, risk observations, and market context grounded in the live data you have.
-- Be honest about uncertainty — if you don't know something, say so.
-- Keep responses concise unless the user asks for detail.
-- Never give financial advice that guarantees outcomes. Always note trading carries risk.`;
+DECISION LOG (today):
+${decisionLogs || "No decisions logged yet today."}`;
 }
 
 router.get(
