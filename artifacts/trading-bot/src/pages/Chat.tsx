@@ -148,12 +148,7 @@ function TradeAlertCard({ alert }: { alert: BotTradeEvent }) {
 
   return (
     <div className="flex gap-3 mb-4 justify-start">
-      <div
-        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
-        style={{ background: "hsl(43 55% 52%)", color: "#1a1a1a" }}
-      >
-        M
-      </div>
+      <img src="/logo.png" alt="Moose" className="w-8 h-8 object-contain flex-shrink-0" />
       <div
         className={cn(
           "max-w-[78%] rounded-2xl rounded-bl-sm px-4 py-3 text-sm border",
@@ -187,12 +182,7 @@ function MessageBubble({
   return (
     <div className={cn("flex gap-3 mb-4", isUser ? "justify-end" : "justify-start")}>
       {!isUser && (
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
-          style={{ background: "hsl(43 55% 52%)", color: "#1a1a1a" }}
-        >
-          M
-        </div>
+        <img src="/logo.png" alt="Moose" className="w-8 h-8 object-contain flex-shrink-0" />
       )}
       <div
         className={cn(
@@ -791,12 +781,7 @@ export default function Chat() {
         <div className="flex-1 flex flex-col min-w-0">
           {activeId === null ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center px-8">
-              <div
-                className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold shadow-lg"
-                style={{ background: "hsl(43 55% 52%)", color: "#1a1a1a" }}
-              >
-                M
-              </div>
+              <img src="/logo.png" alt="Moose" className="w-20 h-20 object-contain drop-shadow-lg" />
               <div>
                 <h2 className="text-2xl font-bold mb-2">Talk to the Moose</h2>
                 <p className="text-muted-foreground text-sm max-w-sm">
@@ -845,12 +830,7 @@ export default function Chat() {
             <>
               {/* Header */}
               <div className="h-14 border-b flex items-center px-4 gap-3 flex-shrink-0">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-                  style={{ background: "hsl(43 55% 52%)", color: "#1a1a1a" }}
-                >
-                  M
-                </div>
+                <img src="/logo.png" alt="Moose" className="w-7 h-7 object-contain flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold leading-none">
                     {convos.find((c) => c.id === activeId)?.title ?? "The Moose"}
@@ -913,12 +893,7 @@ export default function Chat() {
                           )}
                           {streaming && !streamingContent && (
                             <div className="flex gap-3 mb-4">
-                              <div
-                                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                                style={{ background: "hsl(43 55% 52%)", color: "#1a1a1a" }}
-                              >
-                                M
-                              </div>
+                              <img src="/logo.png" alt="Moose" className="w-8 h-8 object-contain flex-shrink-0" />
                               <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
                                 <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
