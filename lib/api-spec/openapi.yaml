@@ -404,6 +404,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/BotStatus"
 
+  /bot/context:
+    get:
+      operationId: getBotContext
+      tags: [bot]
+      summary: Live market snapshot, pending signal, and recent bot decision logs
+      responses:
+        "200":
+          description: Bot context snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotContext"
+
   /bot/recap:
     get:
       operationId: getBotRecap
@@ -1072,6 +1085,64 @@ components:
           type: ["string", "null"]
           description: "ISO timestamp of next scheduled market-close stop (4:00 PM ET)"
       required: [isRunning, tradesExecutedToday, dailyPnl]
+
+    BotContext:
+      type: object
+      properties:
+        botRunning:
+          type: boolean
+        marketSnapshot:
+          type: object
+          properties:
+            spyPrice:
+              type: ["number", "null"]
+            spyChange:
+              type: ["number", "null"]
+            rsi:
+              type: ["number", "null"]
+            trend:
+              type: ["string", "null"]
+            maCondition:
+              type: ["string", "null"]
+            vixPrice:
+              type: ["number", "null"]
+            vixDayChange:
+              type: ["number", "null"]
+            isHighVolatility:
+              type: boolean
+            fetchedAt:
+              type: string
+          required: [isHighVolatility, fetchedAt]
+        pendingSignal:
+          type: object
+          properties:
+            direction:
+              type: string
+              description: "call | put | hold | blocked | unavailable"
+            reason:
+              type: string
+            blockedBy:
+              type: ["string", "null"]
+          required: [direction, reason]
+        recentLogs:
+          type: array
+          items:
+            type: object
+            properties:
+              level:
+                type: string
+              message:
+                type: string
+              action:
+                type: ["string", "null"]
+              symbol:
+                type: ["string", "null"]
+              createdAt:
+                type: string
+            required: [level, message, createdAt]
+        openPositionCount:
+          type: integer
+      required: [botRunning, marketSnapshot, pendingSignal, recentLogs, openPositionCount]
 
     BotRecap:
       type: object

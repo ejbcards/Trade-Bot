@@ -11,6 +11,7 @@ import dashboardRouter from "./dashboard";
 import schwabAuthRouter from "./schwabAuth";
 import anthropicRouter from "./anthropic";
 import recapRouter from "./recap";
+import botContextRouter from "./botContext";
 
 const router: IRouter = Router();
 
@@ -21,6 +22,7 @@ router.use(decisionRulesRouter);
 router.use(tradesRouter);
 router.use(positionsRouter);
 router.use(botRouter);
+router.use(botContextRouter);
 router.use(reportsRouter);
 router.use(dashboardRouter);
 router.use(schwabAuthRouter);

@@ -22,6 +22,7 @@ import type {
   AnthropicConversationWithMessages,
   AnthropicError,
   AnthropicMessage,
+  BotContext,
   BotLog,
   BotRecap,
   BotStatus,
@@ -1735,6 +1736,81 @@ export const useStopBot = <
 > => {
   return useMutation(getStopBotMutationOptions(options));
 };
+
+/**
+ * @summary Live market snapshot, pending signal, and recent bot decision logs
+ */
+export const getGetBotContextUrl = () => {
+  return `/api/bot/context`;
+};
+
+export const getBotContext = async (
+  options?: RequestInit,
+): Promise<BotContext> => {
+  return customFetch<BotContext>(getGetBotContextUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBotContextQueryKey = () => {
+  return [`/api/bot/context`] as const;
+};
+
+export const getGetBotContextQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBotContext>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBotContext>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetBotContextQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getBotContext>>> = ({
+    signal,
+  }) => getBotContext({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBotContext>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBotContextQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBotContext>>
+>;
+export type GetBotContextQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Live market snapshot, pending signal, and recent bot decision logs
+ */
+
+export function useGetBotContext<
+  TData = Awaited<ReturnType<typeof getBotContext>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBotContext>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBotContextQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get today's day recap (null if not yet generated)

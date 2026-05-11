@@ -632,6 +632,41 @@ export const StopBotResponse = zod.object({
 });
 
 /**
+ * @summary Live market snapshot, pending signal, and recent bot decision logs
+ */
+export const GetBotContextResponse = zod.object({
+  botRunning: zod.boolean(),
+  marketSnapshot: zod.object({
+    spyPrice: zod.number().nullish(),
+    spyChange: zod.number().nullish(),
+    rsi: zod.number().nullish(),
+    trend: zod.string().nullish(),
+    maCondition: zod.string().nullish(),
+    vixPrice: zod.number().nullish(),
+    vixDayChange: zod.number().nullish(),
+    isHighVolatility: zod.boolean(),
+    fetchedAt: zod.string(),
+  }),
+  pendingSignal: zod.object({
+    direction: zod
+      .string()
+      .describe("call | put | hold | blocked | unavailable"),
+    reason: zod.string(),
+    blockedBy: zod.string().nullish(),
+  }),
+  recentLogs: zod.array(
+    zod.object({
+      level: zod.string(),
+      message: zod.string(),
+      action: zod.string().nullish(),
+      symbol: zod.string().nullish(),
+      createdAt: zod.string(),
+    }),
+  ),
+  openPositionCount: zod.number(),
+});
+
+/**
  * @summary Get today's day recap (null if not yet generated)
  */
 export const GetBotRecapResponse = zod.object({

@@ -217,6 +217,51 @@ export interface BotStatus {
   scheduledStopAt?: string | null;
 }
 
+export type BotContextMarketSnapshot = {
+  /** @nullable */
+  spyPrice?: number | null;
+  /** @nullable */
+  spyChange?: number | null;
+  /** @nullable */
+  rsi?: number | null;
+  /** @nullable */
+  trend?: string | null;
+  /** @nullable */
+  maCondition?: string | null;
+  /** @nullable */
+  vixPrice?: number | null;
+  /** @nullable */
+  vixDayChange?: number | null;
+  isHighVolatility: boolean;
+  fetchedAt: string;
+};
+
+export type BotContextPendingSignal = {
+  /** call | put | hold | blocked | unavailable */
+  direction: string;
+  reason: string;
+  /** @nullable */
+  blockedBy?: string | null;
+};
+
+export type BotContextRecentLogsItem = {
+  level: string;
+  message: string;
+  /** @nullable */
+  action?: string | null;
+  /** @nullable */
+  symbol?: string | null;
+  createdAt: string;
+};
+
+export interface BotContext {
+  botRunning: boolean;
+  marketSnapshot: BotContextMarketSnapshot;
+  pendingSignal: BotContextPendingSignal;
+  recentLogs: BotContextRecentLogsItem[];
+  openPositionCount: number;
+}
+
 export interface BotRecap {
   id: number;
   date: string;
