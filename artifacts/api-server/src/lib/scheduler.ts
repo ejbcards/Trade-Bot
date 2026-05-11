@@ -125,6 +125,10 @@ async function runOptionsCycle(
   // Fear unwinding: VIX falling > 1.5% today — bullish confirmation signal.
   const isFearUnwinding = vixData ? vixData.dayChangePercent < -1.5 : false;
 
+  // PUT confirmation: VIX must be rising >= vixChangeThreshold (default +2%) on the day.
+  // SPY bearish alone is not enough — fear needs to be building to confirm a PUT entry.
+  const vixConfirmsPut = vixData ? vixData.dayChangePercent >= vixChangeThreshold : false;
+
   const vixLabel = vixData
     ? `VIX $${vixData.price.toFixed(2)} (${vixData.dayChangePercent >= 0 ? "+" : ""}${vixData.dayChangePercent.toFixed(2)}%)`
     : "VIX unavailable";
@@ -288,15 +292,18 @@ async function runOptionsCycle(
       reason = `SPY bullish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy CALL`;
     }
   } else if (trend === "bearish" && rsi > 22) {
-    direction = "put";
-    if (isFearUnwinding) {
-      // VIX falling + bearish trend — conflicting signals, be cautious.
-      reason = `SPY bearish but VIX unwinding (${vixLabel}) — conflicting signals, tighter sizing (MA:${data.maCondition}, RSI:${rsi.toFixed(1)})`;
-    } else {
-      reason = isHighVolatility
-        ? `SPY bearish + ${vixLabel} — elevated vol → leaning PUT (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}, SL:${vixStopClampPercent}%)`
-        : `SPY bearish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy PUT`;
+    if (!vixConfirmsPut) {
+      // SPY bearish but VIX not rising enough — no fear confirmation, skip PUT entry.
+      await logBot(
+        "info",
+        `[HOLD] SPY bearish but ${vixLabel} not confirming — need VIX +${vixChangeThreshold}%+ to enter PUT (MA:${data.maCondition}, RSI:${rsi.toFixed(1)})`,
+        "hold",
+        "SPY",
+      );
+      return;
     }
+    direction = "put";
+    reason = `SPY bearish + ${vixLabel} rising — fear confirmed, buy PUT (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}, SL:${effectiveStopLoss}%)`;
   } else {
     await logBot(
       "info",

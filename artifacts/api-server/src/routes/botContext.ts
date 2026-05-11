@@ -17,7 +17,7 @@ function startOfDayET(): Date {
 
 function computePendingSignal(
   spy: { rsi: number | null; trend: string | null; maCondition: string | null; volumeCondition: string | null } | null,
-  vix: { isHighVolatility: boolean; isFearUnwinding: boolean } | null,
+  vix: { isHighVolatility: boolean; isFearUnwinding: boolean; vixDayChange: number } | null,
   rsiOverbought = 82,
   rsiOversold = 18,
 ): { direction: string; reason: string; blockedBy: string | null } {
@@ -30,6 +30,7 @@ function computePendingSignal(
   const ma = spy.maCondition ?? "unknown";
   const isHighVol = vix?.isHighVolatility ?? false;
   const isFearUnwinding = vix?.isFearUnwinding ?? false;
+  const vixConfirmsPut = vix !== null ? vix.vixDayChange >= 2 : false;
   const highVolume = spy.volumeCondition === "high";
 
   if (trend === "bullish" && rsi < rsiOverbought) {
@@ -110,7 +111,7 @@ router.get("/bot/context", async (_req, res): Promise<void> => {
     spyData
       ? { rsi: spyData.rsi, trend: spyData.trendCondition, maCondition: spyData.maCondition, volumeCondition: spyData.volumeCondition }
       : null,
-    vixData ? { isHighVolatility: vixData.isHighVolatility, isFearUnwinding: vixData.isFearUnwinding } : null,
+    vixData ? { isHighVolatility: vixData.isHighVolatility, isFearUnwinding: vixData.isFearUnwinding, vixDayChange: vixData.dayChangePercent } : null,
   );
 
   const decisionKeywords = [

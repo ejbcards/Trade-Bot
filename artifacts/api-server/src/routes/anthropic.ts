@@ -146,10 +146,14 @@ async function buildSystemPrompt(): Promise<string> {
       signal = `CALL — bullish, MA:${spyData.maCondition}, RSI ${rsi.toFixed(1)}${isFearUnwinding ? " (VIX falling, bullish boost)" : ""}`;
     }
   } else if (trend === "bearish" && rsi > 18) {
-    if (isFearUnwinding) {
-      signal = `PUT (cautious) — bearish but VIX unwinding, conflicting signals, RSI ${rsi.toFixed(1)}`;
+    const vixChange = vixData?.dayChangePercent ?? 0;
+    const vixConfirmsPut = vixChange >= 2;
+    if (!vixConfirmsPut) {
+      signal = `HOLD — SPY bearish but VIX only ${vixChange >= 0 ? "+" : ""}${vixChange.toFixed(2)}% (need +2%+ to confirm PUT entry)`;
+    } else if (isFearUnwinding) {
+      signal = `HOLD — conflicting: SPY bearish but VIX falling (${vixChange.toFixed(2)}%), no PUT entry`;
     } else {
-      signal = `PUT — bearish, RSI ${rsi.toFixed(1)}${isHighVol ? ", VIX elevated & rising (SL tightened)" : ""}`;
+      signal = `PUT — bearish + VIX rising ${vixChange >= 0 ? "+" : ""}${vixChange.toFixed(2)}% confirms fear, RSI ${rsi.toFixed(1)}${isHighVol ? " (SL tightened)" : ""}`;
     }
   } else if (rsi >= 82) {
     signal = `HOLD — RSI overbought (${rsi.toFixed(1)})`;
