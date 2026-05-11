@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Wallet, PieChart, ActivitySquare, BarChart2, BrainCircuit } from "lucide-react";
+import { LayoutDashboard, Wallet, PieChart, ActivitySquare, BarChart2, BrainCircuit, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logoUrl from "/logo.png";
 
@@ -10,6 +10,7 @@ const navItems = [
   { name: "Positions", href: "/positions", icon: PieChart },
   { name: "Trades", href: "/trades", icon: ActivitySquare },
   { name: "Reports", href: "/reports", icon: BarChart2 },
+  { name: "Talk to Moose", href: "/chat", icon: MessageCircle },
 ];
 
 export function Sidebar() {

@@ -10,6 +10,7 @@ import Strategies from "@/pages/Strategies";
 import Positions from "@/pages/Positions";
 import Trades from "@/pages/Trades";
 import Reports from "@/pages/Reports";
+import Chat from "@/pages/Chat";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/positions" component={Positions} />
       <Route path="/trades" component={Trades} />
       <Route path="/reports" component={Reports} />
+      <Route path="/chat" component={Chat} />
       <Route component={NotFound} />
     </Switch>
   );

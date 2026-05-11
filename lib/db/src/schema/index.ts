@@ -6,3 +6,5 @@ export * from "./bot_logs";
 export * from "./bot_state";
 export * from "./activity";
 export * from "./decision_rules";
+export * from "./conversations";
+export * from "./messages";
