@@ -933,6 +933,15 @@ components:
           type: ["integer", "null"]
         maSlowPeriod:
           type: ["integer", "null"]
+        vixPriceThreshold:
+          type: number
+          description: "Block call entries when VIX price exceeds this level (default 23)"
+        vixChangeThreshold:
+          type: number
+          description: "Block call entries when VIX day change exceeds this % (default 2)"
+        vixStopClampPercent:
+          type: number
+          description: "Clamp stop loss to this % during high-volatility regime (default 15)"
         tradeCount:
           type: integer
         winRate:
@@ -984,6 +993,15 @@ components:
           type: ["integer", "null"]
         maSlowPeriod:
           type: ["integer", "null"]
+        vixPriceThreshold:
+          type: number
+          description: "Block call entries when VIX price exceeds this level (default 23)"
+        vixChangeThreshold:
+          type: number
+          description: "Block call entries when VIX day change exceeds this % (default 2)"
+        vixStopClampPercent:
+          type: number
+          description: "Clamp stop loss to this % during high-volatility regime (default 15)"
       required: [name, brokerId, assetType, symbols, maxPositionSize, maxDailyLoss, stopLossPercent, takeProfitPercent, aiSignalThreshold]
 
     UpdateStrategyBody:
@@ -1019,6 +1037,15 @@ components:
           type: ["integer", "null"]
         maSlowPeriod:
           type: ["integer", "null"]
+        vixPriceThreshold:
+          type: ["number", "null"]
+          description: "Block call entries when VIX price exceeds this level"
+        vixChangeThreshold:
+          type: ["number", "null"]
+          description: "Block call entries when VIX day change exceeds this %"
+        vixStopClampPercent:
+          type: ["number", "null"]
+          description: "Clamp stop loss to this % during high-volatility regime"
 
     # ── Bot ─────────────────────────────────────────────────────────
     BotStatus:

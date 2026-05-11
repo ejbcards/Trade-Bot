@@ -90,6 +90,9 @@ async function runOptionsCycle(
   rsiOverbought: number,
   rsiOversold: number,
   maxPositionUsd: number,
+  vixPriceThreshold = 23,
+  vixChangeThreshold = 2,
+  vixStopClampPercent = 15,
 ): Promise<void> {
   // ── 0. Resolve broker — detect Alpaca to route orders accordingly ───────
   const [activeBroker] = await db.select().from(brokersTable).where(eq(brokersTable.id, brokerId));
@@ -105,15 +108,17 @@ async function runOptionsCycle(
   // ── 1a. Volatility regime check ─────────────────────────────────────────
   //
   //  High-volatility conditions (either triggers the regime):
-  //    • VIX price > $23
-  //    • VIX spiked > +2% on the day
+  //    • VIX price > vixPriceThreshold (strategy-configurable, default $23)
+  //    • VIX spiked > vixChangeThreshold % on the day (default +2%)
   //
   //  During high-volatility regime:
-  //    • Stop losses tightened to 15% on both calls and puts
+  //    • Stop losses tightened to vixStopClampPercent (default 15%)
   //    • New CALL entries are blocked (avoid longs when fear is elevated)
   //    • PUT entries are still allowed if the signal is bearish (lean short)
   //
-  const isHighVolatility = vixData?.isHighVolatility ?? false;
+  const isHighVolatility = vixData
+    ? vixData.price > vixPriceThreshold || vixData.dayChangePercent > vixChangeThreshold
+    : false;
   const vixLabel = vixData
     ? `VIX $${vixData.price.toFixed(2)} (${vixData.dayChangePercent >= 0 ? "+" : ""}${vixData.dayChangePercent.toFixed(2)}%)`
     : "VIX unavailable";
@@ -121,14 +126,14 @@ async function runOptionsCycle(
   if (isHighVolatility) {
     await logBot(
       "warn",
-      `[VOL-REGIME] ${vixLabel} — elevated volatility detected. Stop losses clamped to 15%. Call entries blocked; leaning PUTS.`,
+      `[VOL-REGIME] ${vixLabel} — elevated volatility detected. Stop losses clamped to ${vixStopClampPercent}%. Call entries blocked; leaning PUTS.`,
       "vol_filter",
       "VIX",
     );
   }
 
-  // During high volatility, tighten stop loss to 15% regardless of strategy setting
-  const effectiveStopLoss = isHighVolatility ? Math.min(stopLossPercent, 15) : stopLossPercent;
+  // During high volatility, tighten stop loss to vixStopClampPercent
+  const effectiveStopLoss = isHighVolatility ? Math.min(stopLossPercent, vixStopClampPercent) : stopLossPercent;
 
   const trend = data.trendCondition;
   const rsi = data.rsi ?? 50;
@@ -556,7 +561,10 @@ export async function runTradingCycle() {
     const rsiOverbought = parseFloat(strategy.rsiOverbought ?? "82");
     const rsiOversold = parseFloat(strategy.rsiOversold ?? "18");
     const maxPositionUsd = parseFloat(strategy.maxPositionSize ?? "2000");
-    await runOptionsCycle(brokerId, strategy.id, stopLossPercent, takeProfitPercent, rollingStopPercent, rsiOverbought, rsiOversold, maxPositionUsd);
+    const vixPriceThreshold = parseFloat(strategy.vixPriceThreshold ?? "23");
+    const vixChangeThreshold = parseFloat(strategy.vixChangeThreshold ?? "2");
+    const vixStopClampPercent = parseFloat(strategy.vixStopClampPercent ?? "15");
+    await runOptionsCycle(brokerId, strategy.id, stopLossPercent, takeProfitPercent, rollingStopPercent, rsiOverbought, rsiOversold, maxPositionUsd, vixPriceThreshold, vixChangeThreshold, vixStopClampPercent);
   } else {
     const rules = await db.select().from(decisionRulesTable).where(eq(decisionRulesTable.strategyId, strategy.id));
     await runStocksCycle(brokerId, strategy, rules);

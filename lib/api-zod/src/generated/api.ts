@@ -144,6 +144,24 @@ export const ListStrategiesResponseItem = zod.object({
   rsiOversold: zod.number().nullish(),
   maFastPeriod: zod.number().nullish(),
   maSlowPeriod: zod.number().nullish(),
+  vixPriceThreshold: zod
+    .number()
+    .optional()
+    .describe(
+      "Block call entries when VIX price exceeds this level (default 23)",
+    ),
+  vixChangeThreshold: zod
+    .number()
+    .optional()
+    .describe(
+      "Block call entries when VIX day change exceeds this % (default 2)",
+    ),
+  vixStopClampPercent: zod
+    .number()
+    .optional()
+    .describe(
+      "Clamp stop loss to this % during high-volatility regime (default 15)",
+    ),
   tradeCount: zod.number(),
   winRate: zod.number().nullish(),
   totalPnl: zod.number().nullish(),
@@ -173,6 +191,24 @@ export const CreateStrategyBody = zod.object({
   rsiOversold: zod.number().nullish(),
   maFastPeriod: zod.number().nullish(),
   maSlowPeriod: zod.number().nullish(),
+  vixPriceThreshold: zod
+    .number()
+    .optional()
+    .describe(
+      "Block call entries when VIX price exceeds this level (default 23)",
+    ),
+  vixChangeThreshold: zod
+    .number()
+    .optional()
+    .describe(
+      "Block call entries when VIX day change exceeds this % (default 2)",
+    ),
+  vixStopClampPercent: zod
+    .number()
+    .optional()
+    .describe(
+      "Clamp stop loss to this % during high-volatility regime (default 15)",
+    ),
 });
 
 /**
@@ -201,6 +237,24 @@ export const GetStrategyResponse = zod.object({
   rsiOversold: zod.number().nullish(),
   maFastPeriod: zod.number().nullish(),
   maSlowPeriod: zod.number().nullish(),
+  vixPriceThreshold: zod
+    .number()
+    .optional()
+    .describe(
+      "Block call entries when VIX price exceeds this level (default 23)",
+    ),
+  vixChangeThreshold: zod
+    .number()
+    .optional()
+    .describe(
+      "Block call entries when VIX day change exceeds this % (default 2)",
+    ),
+  vixStopClampPercent: zod
+    .number()
+    .optional()
+    .describe(
+      "Clamp stop loss to this % during high-volatility regime (default 15)",
+    ),
   tradeCount: zod.number(),
   winRate: zod.number().nullish(),
   totalPnl: zod.number().nullish(),
@@ -230,6 +284,18 @@ export const UpdateStrategyBody = zod.object({
   rsiOversold: zod.number().nullish(),
   maFastPeriod: zod.number().nullish(),
   maSlowPeriod: zod.number().nullish(),
+  vixPriceThreshold: zod
+    .number()
+    .nullish()
+    .describe("Block call entries when VIX price exceeds this level"),
+  vixChangeThreshold: zod
+    .number()
+    .nullish()
+    .describe("Block call entries when VIX day change exceeds this %"),
+  vixStopClampPercent: zod
+    .number()
+    .nullish()
+    .describe("Clamp stop loss to this % during high-volatility regime"),
 });
 
 export const UpdateStrategyResponse = zod.object({
@@ -251,6 +317,24 @@ export const UpdateStrategyResponse = zod.object({
   rsiOversold: zod.number().nullish(),
   maFastPeriod: zod.number().nullish(),
   maSlowPeriod: zod.number().nullish(),
+  vixPriceThreshold: zod
+    .number()
+    .optional()
+    .describe(
+      "Block call entries when VIX price exceeds this level (default 23)",
+    ),
+  vixChangeThreshold: zod
+    .number()
+    .optional()
+    .describe(
+      "Block call entries when VIX day change exceeds this % (default 2)",
+    ),
+  vixStopClampPercent: zod
+    .number()
+    .optional()
+    .describe(
+      "Clamp stop loss to this % during high-volatility regime (default 15)",
+    ),
   tradeCount: zod.number(),
   winRate: zod.number().nullish(),
   totalPnl: zod.number().nullish(),

@@ -100,6 +100,12 @@ export interface Strategy {
   maFastPeriod?: number | null;
   /** @nullable */
   maSlowPeriod?: number | null;
+  /** Block call entries when VIX price exceeds this level (default 23) */
+  vixPriceThreshold?: number;
+  /** Block call entries when VIX day change exceeds this % (default 2) */
+  vixChangeThreshold?: number;
+  /** Clamp stop loss to this % during high-volatility regime (default 15) */
+  vixStopClampPercent?: number;
   tradeCount: number;
   /** @nullable */
   winRate?: number | null;
@@ -133,6 +139,12 @@ export interface CreateStrategyBody {
   maFastPeriod?: number | null;
   /** @nullable */
   maSlowPeriod?: number | null;
+  /** Block call entries when VIX price exceeds this level (default 23) */
+  vixPriceThreshold?: number;
+  /** Block call entries when VIX day change exceeds this % (default 2) */
+  vixChangeThreshold?: number;
+  /** Clamp stop loss to this % during high-volatility regime (default 15) */
+  vixStopClampPercent?: number;
 }
 
 export interface UpdateStrategyBody {
@@ -164,6 +176,21 @@ export interface UpdateStrategyBody {
   maFastPeriod?: number | null;
   /** @nullable */
   maSlowPeriod?: number | null;
+  /**
+   * Block call entries when VIX price exceeds this level
+   * @nullable
+   */
+  vixPriceThreshold?: number | null;
+  /**
+   * Block call entries when VIX day change exceeds this %
+   * @nullable
+   */
+  vixChangeThreshold?: number | null;
+  /**
+   * Clamp stop loss to this % during high-volatility regime
+   * @nullable
+   */
+  vixStopClampPercent?: number | null;
 }
 
 export interface BotStatus {
