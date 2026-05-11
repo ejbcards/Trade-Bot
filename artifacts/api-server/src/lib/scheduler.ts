@@ -3,7 +3,7 @@ import { db, botStateTable, botLogsTable, activityTable, strategiesTable, decisi
 import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { evaluateDecisionTable } from "./decisionEngine";
-import { fetchMarketData, fetchSpyOptionsChain } from "./marketData";
+import { fetchMarketData, fetchSpyOptionsChain, fetchVixData } from "./marketData";
 import { fetchLiveOptionPrices } from "./liveQuotes";
 import {
   ensurePaperBroker,
@@ -94,12 +94,40 @@ async function runOptionsCycle(
   const [activeBroker] = await db.select().from(brokersTable).where(eq(brokersTable.id, brokerId));
   const isAlpaca = activeBroker?.brokerType === "alpaca" && !!activeBroker.apiKey && !!activeBroker.apiSecret;
 
-  // ── 1. Fetch live SPY data ──────────────────────────────────────────────
-  const data = await fetchMarketData("SPY");
+  // ── 1. Fetch live SPY data + VIX volatility filter ─────────────────────
+  const [data, vixData] = await Promise.all([fetchMarketData("SPY"), fetchVixData()]);
   if (!data) {
     await logBot("warn", "[SKIP] SPY — could not fetch market data", "data_error", "SPY");
     return;
   }
+
+  // ── 1a. Volatility regime check ─────────────────────────────────────────
+  //
+  //  High-volatility conditions (either triggers the regime):
+  //    • VIX price > $23
+  //    • VIX spiked > +2% on the day
+  //
+  //  During high-volatility regime:
+  //    • Stop losses tightened to 15% on both calls and puts
+  //    • New CALL entries are blocked (avoid longs when fear is elevated)
+  //    • PUT entries are still allowed if the signal is bearish (lean short)
+  //
+  const isHighVolatility = vixData?.isHighVolatility ?? false;
+  const vixLabel = vixData
+    ? `VIX $${vixData.price.toFixed(2)} (${vixData.dayChangePercent >= 0 ? "+" : ""}${vixData.dayChangePercent.toFixed(2)}%)`
+    : "VIX unavailable";
+
+  if (isHighVolatility) {
+    await logBot(
+      "warn",
+      `[VOL-REGIME] ${vixLabel} — elevated volatility detected. Stop losses clamped to 15%. Call entries blocked; leaning PUTS.`,
+      "vol_filter",
+      "VIX",
+    );
+  }
+
+  // During high volatility, tighten stop loss to 15% regardless of strategy setting
+  const effectiveStopLoss = isHighVolatility ? Math.min(stopLossPercent, 15) : stopLossPercent;
 
   const trend = data.trendCondition;
   const rsi = data.rsi ?? 50;
@@ -109,6 +137,7 @@ async function runOptionsCycle(
     data.maCondition ? `MA:${data.maCondition}` : null,
     data.candlestickPattern ? `Pat:${data.candlestickPattern}` : null,
     data.trendCondition ? `Trend:${data.trendCondition}` : null,
+    vixData ? `VIX:${vixData.price.toFixed(1)}${isHighVolatility ? "⚠" : ""}` : null,
   ].filter(Boolean).join(" ");
 
   // ── 2. Fetch options chain (used for SL/TP prices + new entry) ──────────
@@ -150,7 +179,8 @@ async function runOptionsCycle(
     }
 
     // Compute effective stop level: rolling stop (once in profit) or fixed SL floor
-    const fixedStopLevel = entryPrice * (1 - stopLossPercent / 100);
+    // During high-volatility regime, effectiveStopLoss is clamped to 15%
+    const fixedStopLevel = entryPrice * (1 - effectiveStopLoss / 100);
     const rollingStopLevel = highWaterMark * (1 - rollingStopPercent / 100);
     const usingRollingStop = highWaterMark > entryPrice && rollingStopLevel > fixedStopLevel;
     const effectiveStopLevel = Math.max(fixedStopLevel, rollingStopLevel);
@@ -220,11 +250,24 @@ async function runOptionsCycle(
   let reason = "";
 
   if (trend === "bullish" && rsi < 78) {
+    if (isHighVolatility) {
+      // During high-volatility regime: block new call entries.
+      // "Avoid opening new positions" when VIX is elevated — lean short instead.
+      await logBot(
+        "warn",
+        `[VOL-FILTER] ${vixLabel} — SPY shows bullish signal but CALL entry blocked. ${isHighVolatility ? "High-vol regime: lean PUTS only." : ""}`,
+        "vol_filter",
+        "SPY",
+      );
+      return;
+    }
     direction = "call";
     reason = `SPY bullish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy CALL`;
   } else if (trend === "bearish" && rsi > 22) {
     direction = "put";
-    reason = `SPY bearish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy PUT`;
+    reason = isHighVolatility
+      ? `SPY bearish + ${vixLabel} — elevated vol → leaning PUT (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}, SL:15%)`
+      : `SPY bearish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy PUT`;
   } else {
     await logBot(
       "info",

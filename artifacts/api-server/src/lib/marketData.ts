@@ -169,6 +169,45 @@ export async function fetchMarketData(symbol: string): Promise<MarketDataResult 
   }
 }
 
+// ─── VIX (Volatility Index) ───────────────────────────────────────────────
+
+export interface VixData {
+  price: number;
+  dayChangePercent: number;
+  isHighVolatility: boolean;
+}
+
+/**
+ * Fetch live VIX data from Yahoo Finance (ticker: ^VIX).
+ *
+ * "High volatility" is defined as:
+ *   - VIX price is above $23, OR
+ *   - VIX has spiked more than +2% on the current trading day.
+ *
+ * Either condition triggers the volatility filter in the trading cycle.
+ */
+export async function fetchVixData(): Promise<VixData | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const quote: any = await (yahooFinance.quote as any)("^VIX");
+    const price: number = quote.regularMarketPrice ?? 0;
+    const prevClose: number = quote.regularMarketPreviousClose ?? price;
+    const dayChangePercent = prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0;
+
+    const isHighVolatility = price > 23 || dayChangePercent > 2;
+
+    logger.info(
+      { vixPrice: price.toFixed(2), dayChangePct: dayChangePercent.toFixed(2), isHighVolatility },
+      "VIX fetched",
+    );
+
+    return { price, dayChangePercent, isHighVolatility };
+  } catch (err) {
+    logger.warn({ err }, "Failed to fetch VIX data — proceeding without volatility filter");
+    return null;
+  }
+}
+
 // ─── SPY Options Chain ────────────────────────────────────────────────────
 
 /**
