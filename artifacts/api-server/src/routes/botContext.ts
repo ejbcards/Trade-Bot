@@ -16,8 +16,8 @@ function startOfDayET(): Date {
 }
 
 function computePendingSignal(
-  spy: { rsi: number | null; trend: string | null; maCondition: string | null } | null,
-  isHighVolatility: boolean,
+  spy: { rsi: number | null; trend: string | null; maCondition: string | null; volumeCondition: string | null } | null,
+  vix: { isHighVolatility: boolean; isFearUnwinding: boolean } | null,
   rsiOverbought = 82,
   rsiOversold = 18,
 ): { direction: string; reason: string; blockedBy: string | null } {
@@ -28,26 +28,43 @@ function computePendingSignal(
   const trend = spy.trend;
   const rsi = spy.rsi ?? 50;
   const ma = spy.maCondition ?? "unknown";
+  const isHighVol = vix?.isHighVolatility ?? false;
+  const isFearUnwinding = vix?.isFearUnwinding ?? false;
+  const highVolume = spy.volumeCondition === "high";
 
   if (trend === "bullish" && rsi < rsiOverbought) {
-    if (isHighVolatility) {
+    if (isHighVol) {
       return {
         direction: "blocked",
-        reason: `SPY is bullish (RSI ${rsi.toFixed(1)}, MA: ${ma}) but CALL entry is blocked — high-vol regime active`,
+        reason: `SPY bullish (RSI ${rsi.toFixed(1)}, MA: ${ma}) but CALL blocked — VIX elevated & rising`,
         blockedBy: "high_vol",
+      };
+    }
+    if (isFearUnwinding && highVolume) {
+      return {
+        direction: "call",
+        reason: `SPY bullish + VIX fear unwinding on high volume (MA: ${ma}, RSI ${rsi.toFixed(1)}) — strong CALL signal`,
+        blockedBy: null,
       };
     }
     return {
       direction: "call",
-      reason: `SPY bullish signal: MA ${ma}, RSI ${rsi.toFixed(1)} — would BUY CALL`,
+      reason: `SPY bullish: MA ${ma}, RSI ${rsi.toFixed(1)}${isFearUnwinding ? " + VIX falling (fear releasing)" : ""} — would BUY CALL`,
       blockedBy: null,
     };
   } else if (trend === "bearish" && rsi > rsiOversold) {
+    if (isFearUnwinding) {
+      return {
+        direction: "put",
+        reason: `SPY bearish but VIX falling — conflicting signals, cautious PUT (RSI ${rsi.toFixed(1)}, MA: ${ma})`,
+        blockedBy: null,
+      };
+    }
     return {
       direction: "put",
-      reason: isHighVolatility
-        ? `SPY bearish + high-vol regime — would BUY PUT with tightened SL (RSI ${rsi.toFixed(1)}, MA: ${ma})`
-        : `SPY bearish signal: MA ${ma}, RSI ${rsi.toFixed(1)} — would BUY PUT`,
+      reason: isHighVol
+        ? `SPY bearish + VIX elevated & rising — would BUY PUT with tightened SL (RSI ${rsi.toFixed(1)}, MA: ${ma})`
+        : `SPY bearish: MA ${ma}, RSI ${rsi.toFixed(1)} — would BUY PUT`,
       blockedBy: null,
     };
   } else if (rsi >= rsiOverbought) {
@@ -88,13 +105,12 @@ router.get("/bot/context", async (_req, res): Promise<void> => {
   ]);
 
   const state = botStateRows[0];
-  const isHighVol = vixData?.isHighVolatility ?? false;
 
   const pendingSignal = computePendingSignal(
     spyData
-      ? { rsi: spyData.rsi, trend: spyData.trendCondition, maCondition: spyData.maCondition }
+      ? { rsi: spyData.rsi, trend: spyData.trendCondition, maCondition: spyData.maCondition, volumeCondition: spyData.volumeCondition }
       : null,
-    isHighVol,
+    vixData ? { isHighVolatility: vixData.isHighVolatility, isFearUnwinding: vixData.isFearUnwinding } : null,
   );
 
   const decisionKeywords = [
@@ -117,7 +133,7 @@ router.get("/bot/context", async (_req, res): Promise<void> => {
       maCondition: spyData?.maCondition ?? null,
       vixPrice: vixData?.price ?? null,
       vixDayChange: vixData?.dayChangePercent ?? null,
-      isHighVolatility: isHighVol,
+      isHighVolatility: vixData?.isHighVolatility ?? false,
       fetchedAt: new Date().toISOString(),
     },
     pendingSignal,

@@ -124,23 +124,33 @@ async function buildSystemPrompt(): Promise<string> {
     : "SPY data unavailable";
 
   const isHighVol = vixData?.isHighVolatility ?? false;
+  const isFearUnwinding = vixData?.isFearUnwinding ?? false;
   const vixLine = vixData
-    ? `VIX ${vixData.price.toFixed(2)} (${vixData.dayChangePercent >= 0 ? "+" : ""}${vixData.dayChangePercent.toFixed(2)}%) | regime:${isHighVol ? "HIGH — CALLs blocked, SL tightened" : "NORMAL"}`
+    ? `VIX ${vixData.price.toFixed(2)} (${vixData.dayChangePercent >= 0 ? "+" : ""}${vixData.dayChangePercent.toFixed(2)}%) | regime:${isHighVol ? "HIGH (rising) — CALLs blocked, SL tightened" : isFearUnwinding ? "FEAR-UNWIND (falling) — bullish confirmation" : "NORMAL"}`
     : "VIX data unavailable";
 
   // --- Pending signal ---
   const trend = spyData?.trendCondition ?? null;
   const rsi = spyData?.rsi ?? 50;
+  const highVolume = spyData?.volumeCondition === "high";
   let signal: string;
 
   if (!spyData) {
     signal = "UNAVAILABLE — market data missing";
   } else if (trend === "bullish" && rsi < 82) {
-    signal = isHighVol
-      ? `BLOCKED (bullish RSI ${rsi.toFixed(1)}) — high-vol, CALL entry blocked`
-      : `CALL — bullish, MA:${spyData.maCondition}, RSI ${rsi.toFixed(1)}`;
+    if (isHighVol) {
+      signal = `BLOCKED (bullish RSI ${rsi.toFixed(1)}) — VIX elevated & rising, CALL blocked`;
+    } else if (isFearUnwinding && highVolume) {
+      signal = `CALL (strong) — bullish + VIX fear unwinding on high volume, MA:${spyData.maCondition}, RSI ${rsi.toFixed(1)}`;
+    } else {
+      signal = `CALL — bullish, MA:${spyData.maCondition}, RSI ${rsi.toFixed(1)}${isFearUnwinding ? " (VIX falling, bullish boost)" : ""}`;
+    }
   } else if (trend === "bearish" && rsi > 18) {
-    signal = `PUT — bearish, RSI ${rsi.toFixed(1)}${isHighVol ? ", high-vol (SL tightened)" : ""}`;
+    if (isFearUnwinding) {
+      signal = `PUT (cautious) — bearish but VIX unwinding, conflicting signals, RSI ${rsi.toFixed(1)}`;
+    } else {
+      signal = `PUT — bearish, RSI ${rsi.toFixed(1)}${isHighVol ? ", VIX elevated & rising (SL tightened)" : ""}`;
+    }
   } else if (rsi >= 82) {
     signal = `HOLD — RSI overbought (${rsi.toFixed(1)})`;
   } else if (rsi <= 18) {

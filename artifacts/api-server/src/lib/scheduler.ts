@@ -116,9 +116,15 @@ async function runOptionsCycle(
   //    • New CALL entries are blocked (avoid longs when fear is elevated)
   //    • PUT entries are still allowed if the signal is bearish (lean short)
   //
+  // High-vol: VIX elevated AND rising, OR VIX spiking today.
+  // A falling VIX (even from elevated levels) is fear releasing — NOT a CALL blocker.
   const isHighVolatility = vixData
-    ? vixData.price > vixPriceThreshold || vixData.dayChangePercent > vixChangeThreshold
+    ? (vixData.price > vixPriceThreshold && vixData.dayChangePercent >= 0) || vixData.dayChangePercent > vixChangeThreshold
     : false;
+
+  // Fear unwinding: VIX falling > 1.5% today — bullish confirmation signal.
+  const isFearUnwinding = vixData ? vixData.dayChangePercent < -1.5 : false;
+
   const vixLabel = vixData
     ? `VIX $${vixData.price.toFixed(2)} (${vixData.dayChangePercent >= 0 ? "+" : ""}${vixData.dayChangePercent.toFixed(2)}%)`
     : "VIX unavailable";
@@ -126,7 +132,14 @@ async function runOptionsCycle(
   if (isHighVolatility) {
     await logBot(
       "warn",
-      `[VOL-REGIME] ${vixLabel} — elevated volatility detected. Stop losses clamped to ${vixStopClampPercent}%. Call entries blocked; leaning PUTS.`,
+      `[VOL-REGIME] ${vixLabel} — elevated volatility detected (rising). Stop losses clamped to ${vixStopClampPercent}%. Call entries blocked; leaning PUTS.`,
+      "vol_filter",
+      "VIX",
+    );
+  } else if (isFearUnwinding) {
+    await logBot(
+      "info",
+      `[FEAR-UNWIND] ${vixLabel} — VIX falling, fear releasing. Bullish confirmation${data.volumeCondition === "high" ? " + high volume" : ""}.`,
       "vol_filter",
       "VIX",
     );
@@ -257,23 +270,33 @@ async function runOptionsCycle(
 
   if (trend === "bullish" && rsi < 78) {
     if (isHighVolatility) {
-      // During high-volatility regime: block new call entries.
-      // "Avoid opening new positions" when VIX is elevated — lean short instead.
+      // VIX is elevated AND rising — fear building. Block new CALL entries.
       await logBot(
         "warn",
-        `[VOL-FILTER] ${vixLabel} — SPY shows bullish signal but CALL entry blocked. ${isHighVolatility ? "High-vol regime: lean PUTS only." : ""}`,
+        `[VOL-FILTER] ${vixLabel} — SPY bullish but CALL blocked (VIX elevated & rising). High-vol regime: lean PUTS only.`,
         "vol_filter",
         "SPY",
       );
       return;
     }
     direction = "call";
-    reason = `SPY bullish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy CALL`;
+    if (isFearUnwinding && data.volumeCondition === "high") {
+      reason = `SPY bullish + VIX fear unwinding on high volume (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — strong CALL signal`;
+    } else if (isFearUnwinding) {
+      reason = `SPY bullish + VIX fear unwinding (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy CALL`;
+    } else {
+      reason = `SPY bullish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy CALL`;
+    }
   } else if (trend === "bearish" && rsi > 22) {
     direction = "put";
-    reason = isHighVolatility
-      ? `SPY bearish + ${vixLabel} — elevated vol → leaning PUT (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}, SL:15%)`
-      : `SPY bearish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy PUT`;
+    if (isFearUnwinding) {
+      // VIX falling + bearish trend — conflicting signals, be cautious.
+      reason = `SPY bearish but VIX unwinding (${vixLabel}) — conflicting signals, tighter sizing (MA:${data.maCondition}, RSI:${rsi.toFixed(1)})`;
+    } else {
+      reason = isHighVolatility
+        ? `SPY bearish + ${vixLabel} — elevated vol → leaning PUT (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}, SL:${vixStopClampPercent}%)`
+        : `SPY bearish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy PUT`;
+    }
   } else {
     await logBot(
       "info",

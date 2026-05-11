@@ -175,16 +175,26 @@ export interface VixData {
   price: number;
   dayChangePercent: number;
   isHighVolatility: boolean;
+  /**
+   * True when VIX is falling meaningfully today (dayChangePercent < -1.5%).
+   * A falling VIX — especially on high volume — signals fear is unwinding,
+   * which is a bullish market confirmation. This is NOT a high-vol regime.
+   */
+  isFearUnwinding: boolean;
 }
 
 /**
  * Fetch live VIX data from Yahoo Finance (ticker: ^VIX).
  *
- * "High volatility" is defined as:
- *   - VIX price is above $23, OR
- *   - VIX has spiked more than +2% on the current trading day.
+ * "High volatility" (CALL-blocking regime) is defined as:
+ *   - VIX price is ABOVE the threshold AND rising (not falling), OR
+ *   - VIX has SPIKED more than +2% on the day (sudden fear spike).
  *
- * Either condition triggers the volatility filter in the trading cycle.
+ * NOTE: VIX elevated but FALLING is NOT high-volatility — it means fear is
+ * releasing, which is actually a bullish signal (especially on high volume).
+ *
+ * "Fear unwinding" is defined as:
+ *   - VIX falling more than -1.5% on the day.
  */
 export async function fetchVixData(): Promise<VixData | null> {
   try {
@@ -194,14 +204,17 @@ export async function fetchVixData(): Promise<VixData | null> {
     const prevClose: number = quote.regularMarketPreviousClose ?? price;
     const dayChangePercent = prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0;
 
-    const isHighVolatility = price > 23 || dayChangePercent > 2;
+    // Only block CALLs if VIX is elevated AND not falling, OR if it just spiked.
+    // A falling VIX (even from an elevated level) signals fear is releasing — bullish.
+    const isHighVolatility = (price > 23 && dayChangePercent >= 0) || dayChangePercent > 2;
+    const isFearUnwinding = dayChangePercent < -1.5;
 
     logger.info(
-      { vixPrice: price.toFixed(2), dayChangePct: dayChangePercent.toFixed(2), isHighVolatility },
+      { vixPrice: price.toFixed(2), dayChangePct: dayChangePercent.toFixed(2), isHighVolatility, isFearUnwinding },
       "VIX fetched",
     );
 
-    return { price, dayChangePercent, isHighVolatility };
+    return { price, dayChangePercent, isHighVolatility, isFearUnwinding };
   } catch (err) {
     logger.warn({ err }, "Failed to fetch VIX data — proceeding without volatility filter");
     return null;
