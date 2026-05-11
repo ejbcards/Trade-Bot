@@ -547,7 +547,7 @@ export default function Chat() {
   const [showIntel, setShowIntel] = useState(true);
   const [tradeAlerts, setTradeAlerts] = useState<BotTradeEvent[]>([]);
   const seenIdsRef = useRef(new Set<string>());
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -612,15 +612,13 @@ export default function Chat() {
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
+      bottomRef.current?.scrollIntoView({ behavior: "instant" });
     }, 50);
   }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages.length, streamingContent, scrollToBottom]);
+  }, [messages.length, streamingContent, activeId, scrollToBottom]);
 
   const handleNewChat = () => {
     const title = `Chat ${new Date().toLocaleDateString("en-US", {
@@ -858,10 +856,7 @@ export default function Chat() {
               <div className="flex flex-1 min-h-0">
                 <div className="flex-1 flex flex-col min-w-0">
                   {/* Messages */}
-                  <ScrollArea
-                    className="flex-1"
-                    ref={scrollRef as React.RefObject<typeof ScrollArea & HTMLDivElement>}
-                  >
+                  <ScrollArea className="flex-1">
                     <div className="p-4">
                       {loadingConvo ? (
                         <div className="flex justify-center py-12">
@@ -901,6 +896,7 @@ export default function Chat() {
                               </div>
                             </div>
                           )}
+                          <div ref={bottomRef} />
                         </>
                       )}
                     </div>
