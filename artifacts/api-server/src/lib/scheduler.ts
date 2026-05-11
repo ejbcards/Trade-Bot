@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { db, botStateTable, botLogsTable, activityTable, strategiesTable, decisionRulesTable, brokersTable, positionsTable } from "@workspace/db";
+import { generateAndSaveRecap } from "../routes/recap";
 import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { evaluateDecisionTable } from "./decisionEngine";
@@ -605,6 +606,12 @@ export function startScheduler() {
     await logBot("info", "Bot auto-stopped at market close (4:00 PM ET)", "auto_stop");
     await db.insert(activityTable).values({ type: "bot_stopped", title: "Bot Stopped — Market Close", description: "Trading bot automatically deactivated at 4:00 PM ET" });
     await refreshSchedule();
+
+    // Auto-generate the day recap at market close
+    logger.info("Generating day recap...");
+    generateAndSaveRecap().then(() => {
+      logger.info("Day recap generated successfully");
+    }).catch((e) => logger.error(e, "Day recap generation failed"));
   }, { timezone: ET_TZ });
 
   cron.schedule("*/30 * * * * 1-5", async () => {

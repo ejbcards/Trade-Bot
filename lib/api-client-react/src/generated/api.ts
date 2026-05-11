@@ -23,6 +23,7 @@ import type {
   AnthropicError,
   AnthropicMessage,
   BotLog,
+  BotRecap,
   BotStatus,
   BrokerConnection,
   ConnectionTestResult,
@@ -1733,6 +1734,160 @@ export const useStopBot = <
   TContext
 > => {
   return useMutation(getStopBotMutationOptions(options));
+};
+
+/**
+ * @summary Get today's day recap (null if not yet generated)
+ */
+export const getGetBotRecapUrl = () => {
+  return `/api/bot/recap`;
+};
+
+export const getBotRecap = async (options?: RequestInit): Promise<BotRecap> => {
+  return customFetch<BotRecap>(getGetBotRecapUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBotRecapQueryKey = () => {
+  return [`/api/bot/recap`] as const;
+};
+
+export const getGetBotRecapQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBotRecap>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBotRecap>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetBotRecapQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getBotRecap>>> = ({
+    signal,
+  }) => getBotRecap({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBotRecap>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBotRecapQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBotRecap>>
+>;
+export type GetBotRecapQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get today's day recap (null if not yet generated)
+ */
+
+export function useGetBotRecap<
+  TData = Awaited<ReturnType<typeof getBotRecap>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBotRecap>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBotRecapQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Generate (or regenerate) today's day recap via AI — streams SSE
+ */
+export const getGenerateBotRecapUrl = () => {
+  return `/api/bot/recap/generate`;
+};
+
+export const generateBotRecap = async (
+  options?: RequestInit,
+): Promise<unknown> => {
+  return customFetch<unknown>(getGenerateBotRecapUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getGenerateBotRecapMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateBotRecap>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateBotRecap>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["generateBotRecap"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateBotRecap>>,
+    void
+  > = () => {
+    return generateBotRecap(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateBotRecapMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateBotRecap>>
+>;
+
+export type GenerateBotRecapMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Generate (or regenerate) today's day recap via AI — streams SSE
+ */
+export const useGenerateBotRecap = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateBotRecap>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateBotRecap>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getGenerateBotRecapMutationOptions(options));
 };
 
 /**

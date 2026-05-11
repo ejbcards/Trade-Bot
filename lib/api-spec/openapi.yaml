@@ -404,6 +404,30 @@ paths:
               schema:
                 $ref: "#/components/schemas/BotStatus"
 
+  /bot/recap:
+    get:
+      operationId: getBotRecap
+      tags: [bot]
+      summary: Get today's day recap (null if not yet generated)
+      responses:
+        "200":
+          description: Today's recap or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotRecap"
+
+  /bot/recap/generate:
+    post:
+      operationId: generateBotRecap
+      tags: [bot]
+      summary: Generate (or regenerate) today's day recap via AI — streams SSE
+      responses:
+        "200":
+          description: SSE stream of recap text chunks
+          content:
+            text/event-stream: {}
+
   /bot/logs:
     get:
       operationId: getBotLogs
@@ -1021,6 +1045,20 @@ components:
           type: ["string", "null"]
           description: "ISO timestamp of next scheduled market-close stop (4:00 PM ET)"
       required: [isRunning, tradesExecutedToday, dailyPnl]
+
+    BotRecap:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+        content:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+      required: [id, date, content, generatedAt]
 
     StartBotBody:
       type: object

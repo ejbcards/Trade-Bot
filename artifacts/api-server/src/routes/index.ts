@@ -10,6 +10,7 @@ import reportsRouter from "./reports";
 import dashboardRouter from "./dashboard";
 import schwabAuthRouter from "./schwabAuth";
 import anthropicRouter from "./anthropic";
+import recapRouter from "./recap";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(reportsRouter);
 router.use(dashboardRouter);
 router.use(schwabAuthRouter);
 router.use(anthropicRouter);
+router.use(recapRouter);
 
 export default router;

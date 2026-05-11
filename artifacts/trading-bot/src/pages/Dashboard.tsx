@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useGetDashboardSummary, useGetBotStatus, useGetRecentActivity, useStartBot, useStopBot, useListBrokers, useListStrategies } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useGetBotStatus, useGetRecentActivity, useStartBot, useStopBot, useListBrokers, useListStrategies, useGetBotRecap, getGetBotRecapQueryKey } from "@workspace/api-client-react";
 import { useLivePositions } from "@/hooks/useLivePositions";
 import { formatCurrency, formatPercent, formatShortDate } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Activity, Play, Square, TrendingUp, TrendingDown, RefreshCcw, Clock, Wifi, WifiOff, Zap } from "lucide-react";
+import { Activity, Play, Square, TrendingUp, TrendingDown, RefreshCcw, Clock, Wifi, WifiOff, Zap, BookOpen, Loader2, RotateCcw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -45,12 +45,32 @@ function formatScheduledTime(iso: string | null | undefined): string {
   return `${dateStr} ${timeStr} ET`;
 }
 
+type BotRecap = { id: number; date: string; content: string; generatedAt: string };
+
+function RecapMarkdown({ content }: { content: string }) {
+  const lines = content.split("\n");
+  return (
+    <div className="text-sm leading-relaxed space-y-2 text-foreground/90">
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} className="h-1" />;
+        // Bold headers: **text**
+        const parts = line.split(/\*\*(.*?)\*\*/g);
+        const rendered = parts.map((part, j) =>
+          j % 2 === 1 ? <strong key={j} className="text-foreground font-semibold">{part}</strong> : part
+        );
+        return <p key={i}>{rendered}</p>;
+      })}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const queryClient = useQueryClient();
   const { data: summary, isLoading: isLoadingSummary } = useGetDashboardSummary();
   const { data: botStatus, isLoading: isLoadingBotStatus } = useGetBotStatus();
   const { data: activity, isLoading: isLoadingActivity } = useGetRecentActivity({ limit: 10 });
   const { positions, isLoading: isLoadingPositions, isConnected, dataSource, lastUpdated, totalLiveUnrealizedPnl } = useLivePositions();
+  const { data: savedRecap, isLoading: isLoadingRecap } = useGetBotRecap();
 
   const startBot = useStartBot();
   const stopBot = useStopBot();
@@ -62,6 +82,62 @@ export default function Dashboard() {
   const [selectedBroker, setSelectedBroker] = useState<string>("");
   const [selectedStrategy, setSelectedStrategy] = useState<string>("");
   const [isCycleRunning, setIsCycleRunning] = useState(false);
+  const [isGeneratingRecap, setIsGeneratingRecap] = useState(false);
+  const [streamingRecap, setStreamingRecap] = useState<string | null>(null);
+  const [liveRecap, setLiveRecap] = useState<BotRecap | null>(null);
+  const abortRef = useRef<(() => void) | null>(null);
+
+  const recap: BotRecap | null = liveRecap ?? (savedRecap as BotRecap | null) ?? null;
+
+  const handleGenerateRecap = useCallback(async () => {
+    if (isGeneratingRecap) return;
+    setIsGeneratingRecap(true);
+    setStreamingRecap("");
+    setLiveRecap(null);
+
+    let aborted = false;
+    abortRef.current = () => { aborted = true; };
+
+    try {
+      const response = await fetch("/api/bot/recap/generate", { method: "POST" });
+      if (!response.ok || !response.body) {
+        toast.error("Failed to generate recap");
+        return;
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (!aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const msg = JSON.parse(line.slice(6)) as { type: string; text?: string; recap?: BotRecap; error?: string };
+            if (msg.type === "delta" && msg.text) {
+              setStreamingRecap((prev) => (prev ?? "") + msg.text);
+            } else if (msg.type === "done" && msg.recap) {
+              setLiveRecap(msg.recap);
+              setStreamingRecap(null);
+              queryClient.invalidateQueries({ queryKey: getGetBotRecapQueryKey() });
+            } else if (msg.type === "error") {
+              toast.error("Recap error", { description: msg.error });
+            }
+          } catch {
+            // skip malformed SSE line
+          }
+        }
+      }
+    } catch (err) {
+      toast.error("Recap failed", { description: (err as Error).message });
+    } finally {
+      setIsGeneratingRecap(false);
+    }
+  }, [isGeneratingRecap, queryClient]);
 
   const handleRunCycle = async () => {
     setIsCycleRunning(true);
@@ -519,6 +595,78 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Day Recap */}
+        <Card className="border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-transparent">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-amber-400" />
+                <div>
+                  <CardTitle className="text-base">Day Recap</CardTitle>
+                  <CardDescription className="text-xs mt-0.5">
+                    {recap
+                      ? `Generated ${new Date(recap.generatedAt).toLocaleString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true })} ET · ${recap.date}`
+                      : "AI-generated narrative summary of today's trading activity"}
+                  </CardDescription>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 gap-1.5"
+                onClick={handleGenerateRecap}
+                disabled={isGeneratingRecap}
+              >
+                {isGeneratingRecap ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Generating…
+                  </>
+                ) : recap ? (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Regenerate
+                  </>
+                ) : (
+                  <>
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Generate Recap
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoadingRecap ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+                <Skeleton className="h-4 w-4/6" />
+              </div>
+            ) : streamingRecap !== null ? (
+              <div>
+                <RecapMarkdown content={streamingRecap} />
+                <div className="flex items-center gap-1.5 mt-3 text-xs text-amber-400/70">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Writing recap…</span>
+                </div>
+              </div>
+            ) : recap ? (
+              <RecapMarkdown content={recap.content} />
+            ) : (
+              <div className="flex flex-col items-center justify-center py-10 text-center gap-3">
+                <BookOpen className="w-10 h-10 text-amber-500/30" />
+                <div>
+                  <p className="text-muted-foreground text-sm">No recap for today yet.</p>
+                  <p className="text-muted-foreground/60 text-xs mt-1">
+                    A recap is auto-generated at 4:00 PM ET, or you can generate one now.
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );

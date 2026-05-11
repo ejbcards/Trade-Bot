@@ -190,6 +190,13 @@ export interface BotStatus {
   scheduledStopAt?: string | null;
 }
 
+export interface BotRecap {
+  id: number;
+  date: string;
+  content: string;
+  generatedAt: string;
+}
+
 export interface StartBotBody {
   strategyId: number;
   brokerId: number;

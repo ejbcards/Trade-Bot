@@ -548,6 +548,16 @@ export const StopBotResponse = zod.object({
 });
 
 /**
+ * @summary Get today's day recap (null if not yet generated)
+ */
+export const GetBotRecapResponse = zod.object({
+  id: zod.number(),
+  date: zod.string(),
+  content: zod.string(),
+  generatedAt: zod.coerce.date(),
+});
+
+/**
  * @summary Get recent bot activity logs
  */
 export const getBotLogsQueryLimitDefault = 50;
