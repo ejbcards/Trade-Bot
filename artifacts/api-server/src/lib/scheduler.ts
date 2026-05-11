@@ -699,18 +699,20 @@ export function startScheduler() {
 
   cron.schedule("0 16 * * 1-5", async () => {
     const state = await getState();
-    if (!state?.isRunning) return;
-    logger.info("Market close — stopping bot");
-    await db.update(botStateTable).set({ isRunning: false, tradesExecutedToday: 0, dailyPnl: "0" });
-    await logBot("info", "Bot auto-stopped at market close (4:00 PM ET)", "auto_stop");
-    await db.insert(activityTable).values({ type: "bot_stopped", title: "Bot Stopped — Market Close", description: "Trading bot automatically deactivated at 4:00 PM ET" });
-    await refreshSchedule();
-
-    // Auto-generate the day recap at market close
-    logger.info("Generating day recap...");
+    // Stop the bot if it is still running at market close
+    if (state?.isRunning) {
+      logger.info("Market close — stopping bot");
+      await db.update(botStateTable).set({ isRunning: false, tradesExecutedToday: 0, dailyPnl: "0" });
+      await logBot("info", "Bot auto-stopped at market close (4:00 PM ET)", "auto_stop");
+      await db.insert(activityTable).values({ type: "bot_stopped", title: "Bot Stopped — Market Close", description: "Trading bot automatically deactivated at 4:00 PM ET" });
+      await refreshSchedule();
+    }
+    // Always generate the daily recap at market close — regardless of whether
+    // the bot was running (e.g. Friday: bot already stopped by weekend-close at 3:30 PM)
+    logger.info("Generating daily recap...");
     generateAndSaveRecap().then(() => {
-      logger.info("Day recap generated successfully");
-    }).catch((e) => logger.error(e, "Day recap generation failed"));
+      logger.info("Daily recap generated successfully");
+    }).catch((e) => logger.error(e, "Daily recap generation failed"));
   }, { timezone: ET_TZ });
 
   cron.schedule("*/30 * * * * 1-5", async () => {
