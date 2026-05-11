@@ -21,7 +21,10 @@ import {
   AlertTriangle,
   ShieldAlert,
   Zap,
+  Target,
+  ArrowLeftRight,
 } from "lucide-react";
+import { useBotNotificationsContext, type BotTradeEvent } from "@/context/BotNotificationsContext";
 import {
   useListAnthropicConversations,
   useCreateAnthropicConversation,
@@ -77,6 +80,99 @@ interface BotContextData {
     createdAt: string;
   }>;
   openPositionCount: number;
+}
+
+// ---- Trade alert card (proactive bot notification) ----
+function buildAlertNarrative(alert: BotTradeEvent): string {
+  const dir = alert.direction && alert.direction !== "stock"
+    ? `SPY ${alert.direction.toUpperCase()} option`
+    : `${alert.symbol} position`;
+
+  switch (alert.type) {
+    case "buy": {
+      const qty = alert.quantity ? `${alert.quantity}x ` : "";
+      const contract = alert.contract ? ` (${alert.contract})` : "";
+      const cost = alert.cost ? ` · total cost $${alert.cost.toFixed(2)}` : "";
+      return `I just entered a ${dir}${contract} — ${qty}@ $${alert.price.toFixed(2)}${cost}.\n\nWhy I entered: ${alert.reason}`;
+    }
+    case "take_profit": {
+      const pnl = alert.pnl !== undefined ? ` Realized P&L: +$${alert.pnl.toFixed(2)}.` : "";
+      return `I took profit on a ${dir} @ $${alert.price.toFixed(2)}.${pnl}\n\nTrigger: ${alert.reason}`;
+    }
+    case "stop_loss": {
+      const pnl = alert.pnl !== undefined ? ` Realized P&L: ${alert.pnl >= 0 ? "+" : ""}$${alert.pnl.toFixed(2)}.` : "";
+      return `Stop-loss hit on my ${dir} @ $${alert.price.toFixed(2)}.${pnl}\n\nReason: ${alert.reason}`;
+    }
+    case "rolling_stop": {
+      const pnl = alert.pnl !== undefined ? ` Realized P&L: ${alert.pnl >= 0 ? "+" : ""}$${alert.pnl.toFixed(2)}.` : "";
+      return `Rolling stop triggered on my ${dir} @ $${alert.price.toFixed(2)}.${pnl}\n\nReason: ${alert.reason}`;
+    }
+    case "sell": {
+      const pnl = alert.pnl !== undefined ? ` Realized P&L: ${alert.pnl >= 0 ? "+" : ""}$${alert.pnl.toFixed(2)}.` : "";
+      return `I exited my ${dir} @ $${alert.price.toFixed(2)}.${pnl}\n\nReason: ${alert.reason}`;
+    }
+    case "flip_close": {
+      const pnl = alert.pnl !== undefined ? ` P&L: ${alert.pnl >= 0 ? "+" : ""}$${alert.pnl.toFixed(2)}.` : "";
+      return `Direction flip — I closed my ${dir} @ $${alert.price.toFixed(2)}.${pnl}\n\nReason: ${alert.reason}`;
+    }
+    case "weekend_close": {
+      const pnl = alert.pnl !== undefined ? ` P&L: ${alert.pnl >= 0 ? "+" : ""}$${alert.pnl.toFixed(2)}.` : "";
+      return `Weekend close — flattened my ${dir} @ $${alert.price.toFixed(2)} to avoid overnight/weekend risk.${pnl}`;
+    }
+  }
+}
+
+function TradeAlertCard({ alert }: { alert: BotTradeEvent }) {
+  const isPositive = alert.type === "buy" || alert.type === "take_profit";
+  const isNegative = alert.type === "stop_loss" || alert.type === "rolling_stop";
+
+  const icon = isPositive ? (
+    alert.type === "take_profit"
+      ? <Target className="w-3.5 h-3.5 text-emerald-400" />
+      : <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+  ) : alert.type === "flip_close" ? (
+    <ArrowLeftRight className="w-3.5 h-3.5 text-sky-400" />
+  ) : (
+    <TrendingDown className="w-3.5 h-3.5 text-red-400" />
+  );
+
+  const label = {
+    buy: "Trade Executed",
+    sell: "Position Closed",
+    stop_loss: "Stop-Loss Hit",
+    take_profit: "Take-Profit Hit",
+    rolling_stop: "Rolling Stop Hit",
+    flip_close: "Direction Flip",
+    weekend_close: "Weekend Close",
+  }[alert.type];
+
+  return (
+    <div className="flex gap-3 mb-4 justify-start">
+      <div
+        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+        style={{ background: "hsl(43 55% 52%)", color: "#1a1a1a" }}
+      >
+        M
+      </div>
+      <div
+        className={cn(
+          "max-w-[78%] rounded-2xl rounded-bl-sm px-4 py-3 text-sm border",
+          isPositive
+            ? "bg-emerald-500/8 border-emerald-500/25 text-foreground"
+            : isNegative
+              ? "bg-red-500/8 border-red-500/25 text-foreground"
+              : "bg-sky-500/8 border-sky-500/25 text-foreground",
+        )}
+      >
+        <div className="flex items-center gap-1.5 mb-2">
+          {icon}
+          <span className="text-[11px] font-bold uppercase tracking-wide opacity-70">{label}</span>
+        </div>
+        <p className="text-sm leading-relaxed whitespace-pre-wrap">{buildAlertNarrative(alert)}</p>
+        <p className="text-[10px] mt-2 opacity-40">{formatTime(alert.timestamp)}</p>
+      </div>
+    </div>
+  );
 }
 
 // ---- MessageBubble ----
@@ -459,9 +555,39 @@ export default function Chat() {
   const [streaming, setStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [showIntel, setShowIntel] = useState(true);
+  const [tradeAlerts, setTradeAlerts] = useState<BotTradeEvent[]>([]);
+  const seenIdsRef = useRef(new Set<string>());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const { notifications, markAllRead } = useBotNotificationsContext();
+
+  // Mark all existing notifications as read and seen when entering chat
+  useEffect(() => {
+    notifications.forEach((n) => seenIdsRef.current.add(n.id));
+    markAllRead();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Inject new trade events as alert cards in the feed
+  useEffect(() => {
+    const newAlerts: BotTradeEvent[] = [];
+    for (const n of notifications) {
+      if (!seenIdsRef.current.has(n.id)) {
+        seenIdsRef.current.add(n.id);
+        newAlerts.push(n);
+      }
+    }
+    if (newAlerts.length > 0) {
+      const sorted = [...newAlerts].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      );
+      setTradeAlerts((prev) => [...prev, ...sorted]);
+      scrollToBottom();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notifications]);
 
   const { data: convos = [], isLoading: loadingConvos } = useListAnthropicConversations();
   const { data: activeConvo, isLoading: loadingConvo } = useGetAnthropicConversation(
@@ -761,7 +887,7 @@ export default function Chat() {
                         <div className="flex justify-center py-12">
                           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                         </div>
-                      ) : messages.length === 0 && !streaming ? (
+                      ) : messages.length === 0 && tradeAlerts.length === 0 && !streaming ? (
                         <div className="text-center py-12 text-muted-foreground text-sm">
                           Send a message to start the conversation.
                         </div>
@@ -769,6 +895,9 @@ export default function Chat() {
                         <>
                           {messages.map((m) => (
                             <MessageBubble key={m.id} msg={m} />
+                          ))}
+                          {tradeAlerts.map((a) => (
+                            <TradeAlertCard key={a.id} alert={a} />
                           ))}
                           {streaming && streamingContent && (
                             <MessageBubble
