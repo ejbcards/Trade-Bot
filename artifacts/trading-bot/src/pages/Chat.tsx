@@ -23,6 +23,8 @@ import {
   Zap,
   Target,
   ArrowLeftRight,
+  BookOpen,
+  RotateCcw,
 } from "lucide-react";
 import { useBotNotificationsContext, type BotTradeEvent } from "@/context/BotNotificationsContext";
 import {
@@ -30,6 +32,7 @@ import {
   useCreateAnthropicConversation,
   useDeleteAnthropicConversation,
   useGetAnthropicConversation,
+  useGetBotRecap,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListAnthropicConversationsQueryKey } from "@workspace/api-client-react";
@@ -119,6 +122,8 @@ function buildAlertNarrative(alert: BotTradeEvent): string {
       const pnl = alert.pnl !== undefined ? ` P&L: ${alert.pnl >= 0 ? "+" : ""}$${alert.pnl.toFixed(2)}.` : "";
       return `Weekend close — flattened my ${dir} @ $${alert.price.toFixed(2)} to avoid overnight/weekend risk.${pnl}`;
     }
+    default:
+      return alert.reason;
   }
 }
 
@@ -144,6 +149,7 @@ function TradeAlertCard({ alert }: { alert: BotTradeEvent }) {
     rolling_stop: "Rolling Stop Hit",
     flip_close: "Direction Flip",
     weekend_close: "Weekend Close",
+    recap: "Daily Recap",
   }[alert.type];
 
   return (
@@ -537,6 +543,58 @@ function LiveIntelPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ---- Recap card ----
+type RecapData = { content: string; date: string; generatedAt: string };
+
+function RecapMarkdownBody({ content }: { content: string }) {
+  const lines = content.split("\n");
+  return (
+    <div className="text-sm leading-relaxed space-y-1.5">
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} className="h-1" />;
+        const parts = line.split(/\*\*(.*?)\*\*/g);
+        const rendered = parts.map((part, j) =>
+          j % 2 === 1 ? <strong key={j} className="text-foreground font-semibold">{part}</strong> : part
+        );
+        return <p key={i}>{rendered}</p>;
+      })}
+    </div>
+  );
+}
+
+function RecapCard({ recap }: { recap: RecapData }) {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <div className="flex gap-3 mb-4 justify-start">
+      <img src="/logo.png" alt="Moose" className="w-8 h-8 object-contain flex-shrink-0 mt-0.5" />
+      <div className="max-w-[82%] rounded-2xl rounded-bl-sm border bg-purple-500/8 border-purple-500/25 overflow-hidden">
+        <button
+          className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-purple-500/5 transition-colors"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <BookOpen className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+          <span className="text-[11px] font-bold uppercase tracking-wide text-purple-300 flex-1">
+            Daily Recap · {recap.date}
+          </span>
+          <span className="text-[10px] text-muted-foreground/50">
+            {new Date(recap.generatedAt).toLocaleString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true })} ET
+          </span>
+          {expanded ? (
+            <ChevronUp className="w-3.5 h-3.5 text-purple-400/60 ml-1" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-purple-400/60 ml-1" />
+          )}
+        </button>
+        {expanded && (
+          <div className="px-4 pb-3 text-foreground/85">
+            <RecapMarkdownBody content={recap.content} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---- Main Chat component ----
 export default function Chat() {
   const qc = useQueryClient();
@@ -546,27 +604,37 @@ export default function Chat() {
   const [streamingContent, setStreamingContent] = useState("");
   const [showIntel, setShowIntel] = useState(true);
   const [tradeAlerts, setTradeAlerts] = useState<BotTradeEvent[]>([]);
+  const [liveRecap, setLiveRecap] = useState<RecapData | null>(null);
   const seenIdsRef = useRef(new Set<string>());
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const { notifications, markAllRead } = useBotNotificationsContext();
+  const { notifications, markAllRead, markRecapRead } = useBotNotificationsContext();
+  const { data: savedRecapRaw } = useGetBotRecap();
+  const savedRecap = savedRecapRaw as RecapData | null | undefined;
+  const currentRecap: RecapData | null = liveRecap ?? savedRecap ?? null;
 
   // Mark all existing notifications as read and seen when entering chat
   useEffect(() => {
     notifications.forEach((n) => seenIdsRef.current.add(n.id));
     markAllRead();
+    markRecapRead();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Inject new trade events as alert cards in the feed
+  // Inject new trade events as alert cards; handle recap events separately
   useEffect(() => {
     const newAlerts: BotTradeEvent[] = [];
+    let newestRecap: BotTradeEvent | null = null;
     for (const n of notifications) {
       if (!seenIdsRef.current.has(n.id)) {
         seenIdsRef.current.add(n.id);
-        newAlerts.push(n);
+        if (n.type === "recap") {
+          newestRecap = n;
+        } else {
+          newAlerts.push(n);
+        }
       }
     }
     if (newAlerts.length > 0) {
@@ -574,6 +642,15 @@ export default function Chat() {
         (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
       );
       setTradeAlerts((prev) => [...prev, ...sorted]);
+      scrollToBottom();
+    }
+    if (newestRecap?.content) {
+      setLiveRecap({
+        content: newestRecap.content,
+        date: new Date(newestRecap.timestamp).toLocaleDateString("en-CA", { timeZone: "America/New_York" }),
+        generatedAt: newestRecap.timestamp,
+      });
+      markRecapRead();
       scrollToBottom();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -862,7 +939,7 @@ export default function Chat() {
                         <div className="flex justify-center py-12">
                           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                         </div>
-                      ) : messages.length === 0 && tradeAlerts.length === 0 && !streaming ? (
+                      ) : messages.length === 0 && tradeAlerts.length === 0 && !streaming && !currentRecap ? (
                         <div className="text-center py-12 text-muted-foreground text-sm">
                           Send a message to start the conversation.
                         </div>
@@ -874,6 +951,7 @@ export default function Chat() {
                           {tradeAlerts.map((a) => (
                             <TradeAlertCard key={a.id} alert={a} />
                           ))}
+                          {currentRecap && <RecapCard recap={currentRecap} />}
                           {streaming && streamingContent && (
                             <MessageBubble
                               msg={{

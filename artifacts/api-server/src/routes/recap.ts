@@ -11,6 +11,7 @@ import {
   brokersTable,
 } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { emitBotTrade } from "../lib/botEvents";
 
 const router: IRouter = Router();
 
@@ -176,6 +177,14 @@ export async function generateAndSaveRecap(todayStr?: string): Promise<string> {
   } else {
     await db.insert(dailyRecaps).values({ date, content: fullContent });
   }
+
+  emitBotTrade({
+    type: "recap",
+    symbol: "RECAP",
+    price: 0,
+    reason: "Daily recap generated",
+    content: fullContent,
+  });
 
   return fullContent;
 }

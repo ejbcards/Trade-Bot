@@ -7,7 +7,8 @@ export type BotTradeType =
   | "take_profit"
   | "rolling_stop"
   | "flip_close"
-  | "weekend_close";
+  | "weekend_close"
+  | "recap";
 
 export interface BotTradeEvent {
   id: string;
@@ -20,6 +21,7 @@ export interface BotTradeEvent {
   cost?: number;
   pnl?: number;
   reason: string;
+  content?: string;
   timestamp: string;
 }
 
@@ -31,7 +33,9 @@ interface BotNotificationsContextValue {
   notifications: BotNotification[];
   unreadCount: number;
   lastUnread: BotNotification | null;
+  lastUnreadRecap: BotNotification | null;
   markAllRead: () => void;
+  markRecapRead: () => void;
   clearAll: () => void;
 }
 
@@ -39,7 +43,9 @@ const BotNotificationsContext = createContext<BotNotificationsContextValue>({
   notifications: [],
   unreadCount: 0,
   lastUnread: null,
+  lastUnreadRecap: null,
   markAllRead: () => {},
+  markRecapRead: () => {},
   clearAll: () => {},
 });
 
@@ -49,11 +55,16 @@ export function BotNotificationsProvider({ children }: { children: ReactNode }) 
   const [notifications, setNotifications] = useState<BotNotification[]>([]);
   const esRef = useRef<EventSource | null>(null);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
-  const lastUnread = notifications.find((n) => !n.read) ?? null;
+  const unreadCount = notifications.filter((n) => !n.read && n.type !== "recap").length;
+  const lastUnread = notifications.find((n) => !n.read && n.type !== "recap") ?? null;
+  const lastUnreadRecap = notifications.find((n) => !n.read && n.type === "recap") ?? null;
 
   const markAllRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setNotifications((prev) => prev.map((n) => (n.type !== "recap" ? { ...n, read: true } : n)));
+  }, []);
+
+  const markRecapRead = useCallback(() => {
+    setNotifications((prev) => prev.map((n) => (n.type === "recap" ? { ...n, read: true } : n)));
   }, []);
 
   const clearAll = useCallback(() => {
@@ -86,7 +97,7 @@ export function BotNotificationsProvider({ children }: { children: ReactNode }) 
 
   return (
     <BotNotificationsContext.Provider
-      value={{ notifications, unreadCount, lastUnread, markAllRead, clearAll }}
+      value={{ notifications, unreadCount, lastUnread, lastUnreadRecap, markAllRead, markRecapRead, clearAll }}
     >
       {children}
     </BotNotificationsContext.Provider>

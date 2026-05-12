@@ -3,6 +3,7 @@ import { LayoutDashboard, Wallet, PieChart, ActivitySquare, BarChart2, BrainCirc
 import { cn } from "@/lib/utils";
 import logoUrl from "/logo.png";
 import { useBotNotificationsContext } from "@/context/BotNotificationsContext";
+import { BookOpen } from "lucide-react";
 
 const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -22,10 +23,11 @@ function alertDotColor(type: string): "green" | "red" | null {
 
 export function Sidebar() {
   const [location] = useLocation();
-  const { lastUnread } = useBotNotificationsContext();
+  const { lastUnread, lastUnreadRecap } = useBotNotificationsContext();
 
   const dotColor = lastUnread ? alertDotColor(lastUnread.type) : null;
   const onChat = location === "/chat" || location.startsWith("/chat");
+  const showRecapDot = !onChat && lastUnreadRecap !== null;
 
   return (
     <aside className="w-64 border-r bg-sidebar flex flex-col h-full flex-shrink-0">
@@ -40,7 +42,7 @@ export function Sidebar() {
         {navItems.map((item) => {
           const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
           const isChat = item.href === "/chat";
-          const showDot = isChat && dotColor !== null && !onChat;
+          const showTradeDot = isChat && dotColor !== null && !onChat;
 
           return (
             <Link key={item.href} href={item.href}>
@@ -60,7 +62,7 @@ export function Sidebar() {
                       isActive ? "text-primary" : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80"
                     )}
                   />
-                  {showDot && (
+                  {showTradeDot && (
                     <span
                       className={cn(
                         "absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-sidebar animate-pulse",
@@ -68,9 +70,12 @@ export function Sidebar() {
                       )}
                     />
                   )}
+                  {isChat && showRecapDot && !showTradeDot && (
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-sidebar bg-purple-500 animate-pulse" />
+                  )}
                 </div>
                 <span className="flex-1">{item.name}</span>
-                {showDot && (
+                {showTradeDot && (
                   <span
                     className={cn(
                       "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
@@ -80,6 +85,12 @@ export function Sidebar() {
                     )}
                   >
                     {dotColor === "green" ? "BUY" : "ALERT"}
+                  </span>
+                )}
+                {isChat && showRecapDot && !showTradeDot && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 flex items-center gap-1">
+                    <BookOpen className="w-2.5 h-2.5" />
+                    RECAP
                   </span>
                 )}
               </div>

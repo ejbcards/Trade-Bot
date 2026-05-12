@@ -8,7 +8,8 @@ export type BotTradeType =
   | "take_profit"
   | "rolling_stop"
   | "flip_close"
-  | "weekend_close";
+  | "weekend_close"
+  | "recap";
 
 export interface BotTradeEvent {
   id: string;
@@ -21,6 +22,7 @@ export interface BotTradeEvent {
   cost?: number;
   pnl?: number;
   reason: string;
+  content?: string;
   timestamp: string;
 }
 
