@@ -204,9 +204,11 @@ export async function fetchVixData(): Promise<VixData | null> {
     const prevClose: number = quote.regularMarketPreviousClose ?? price;
     const dayChangePercent = prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0;
 
-    // Only block CALLs if VIX is elevated AND not falling, OR if it just spiked.
-    // A falling VIX (even from an elevated level) signals fear is releasing — bullish.
-    const isHighVolatility = (price > 23 && dayChangePercent >= 0) || dayChangePercent > 2;
+    // Absolute CALL-block rule (three independent conditions — any one is sufficient):
+    //   1. VIX > $18 AND rising  — fear building above warning level
+    //   2. VIX day spike > +2%   — sudden fear surge
+    //   3. VIX price > $23       — sustained high-fear regime
+    const isHighVolatility = (price > 18 && dayChangePercent > 0) || dayChangePercent > 2 || price > 23;
     const isFearUnwinding = dayChangePercent < -1.5;
 
     logger.info(

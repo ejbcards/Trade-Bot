@@ -117,10 +117,16 @@ async function runOptionsCycle(
   //    • New CALL entries are blocked (avoid longs when fear is elevated)
   //    • PUT entries are still allowed if the signal is bearish (lean short)
   //
-  // High-vol: VIX elevated AND rising, OR VIX spiking today.
-  // A falling VIX (even from elevated levels) is fear releasing — NOT a CALL blocker.
+  // Absolute CALL-block rule — any one of these three conditions is sufficient:
+  //   1. VIX > $18 AND rising (day change > 0)  — fear is building above the warning level
+  //   2. VIX spikes > vixChangeThreshold% on the day (default +2%)  — sudden fear surge
+  //   3. VIX price > vixPriceThreshold (default $23)  — sustained high fear regime
+  // This rule is ABSOLUTE: no bullish RSI, trend, or MA signal can override it.
+  const CALL_BLOCK_VIX_FLOOR = 18;
   const isHighVolatility = vixData
-    ? (vixData.price > vixPriceThreshold && vixData.dayChangePercent >= 0) || vixData.dayChangePercent > vixChangeThreshold
+    ? (vixData.price > CALL_BLOCK_VIX_FLOOR && vixData.dayChangePercent > 0)
+      || vixData.dayChangePercent > vixChangeThreshold
+      || vixData.price > vixPriceThreshold
     : false;
 
   // Fear unwinding: VIX falling > 1.5% today — bullish confirmation signal.
@@ -135,9 +141,15 @@ async function runOptionsCycle(
     : "VIX unavailable";
 
   if (isHighVolatility) {
+    const blockReason =
+      vixData && vixData.price > vixPriceThreshold
+        ? `VIX $${vixData.price.toFixed(2)} above $${vixPriceThreshold} ceiling`
+        : vixData && vixData.dayChangePercent > vixChangeThreshold
+          ? `VIX spiked +${vixData.dayChangePercent.toFixed(2)}% today (>${vixChangeThreshold}% threshold)`
+          : `VIX $${vixData?.price.toFixed(2)} above $${CALL_BLOCK_VIX_FLOOR} floor AND rising`;
     await logBot(
       "warn",
-      `[VOL-REGIME] ${vixLabel} — elevated volatility detected (rising). Stop losses clamped to ${vixStopClampPercent}%. Call entries blocked; leaning PUTS.`,
+      `[CALL-BLOCKED] ${vixLabel} — ${blockReason}. CALL entries ABSOLUTELY blocked. Stop losses clamped to ${vixStopClampPercent}%. PUTs still allowed if signal bearish.`,
       "vol_filter",
       "VIX",
     );
@@ -291,10 +303,10 @@ async function runOptionsCycle(
 
   if (trend === "bullish" && rsi < 78) {
     if (isHighVolatility) {
-      // VIX is elevated AND rising — fear building. Block new CALL entries.
+      // Absolute CALL block — no bullish signal can override this.
       await logBot(
         "warn",
-        `[VOL-FILTER] ${vixLabel} — SPY bullish but CALL blocked (VIX elevated & rising). High-vol regime: lean PUTS only.`,
+        `[CALL-BLOCKED] ${vixLabel} — CALL entry rejected (absolute VIX rule). SPY signal was bullish but VIX conditions override all entries.`,
         "vol_filter",
         "SPY",
       );
