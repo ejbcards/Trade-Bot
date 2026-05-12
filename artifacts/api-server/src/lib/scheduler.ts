@@ -5,7 +5,7 @@ import { generateAndSaveRecap } from "../routes/recap";
 import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { evaluateDecisionTable } from "./decisionEngine";
-import { fetchMarketData, fetchSpyOptionsChain, fetchVixData } from "./marketData";
+import { fetchMarketData, fetchSpyOptionsChain, fetchVixData, fetchIntraday5mMomentum } from "./marketData";
 import { fetchLiveOptionPrices } from "./liveQuotes";
 import {
   ensurePaperBroker,
@@ -296,22 +296,38 @@ async function runOptionsCycle(
 
   // ── 4. Determine direction signal ──────────────────────────────────────
   // (trend + rsi already declared above for use in exit checks)
-
-  // Relaxed RSI gates for day trading (72→78 / 28→22)
+  //
+  // Priority order:
+  //   A) High-vol regime  — CALLs ABSOLUTELY blocked; PUTs are primary trade.
+  //      Use 5-min chart to confirm downward momentum before entering PUT.
+  //   B) Normal regime    — bullish daily → CALL; bearish daily + VIX rising → PUT.
+  //
   let direction: "call" | "put" | null = null;
   let reason = "";
 
-  if (trend === "bullish" && rsi < 78) {
-    if (isHighVolatility) {
-      // Absolute CALL block — no bullish signal can override this.
+  if (isHighVolatility) {
+    // ── A) High-vol regime ────────────────────────────────────────────────
+    // CALLs are unconditionally blocked. PUTs are the PRIMARY directional trade.
+    // Confirm with 5-min intraday momentum before entering — don't chase a bounce.
+    const momentum = await fetchIntraday5mMomentum("SPY");
+    const momLabel = momentum
+      ? `5m:${momentum.trend}(↓${momentum.consecutiveDown}/↑${momentum.consecutiveUp} bars, ${momentum.momentum25m !== null ? (momentum.momentum25m >= 0 ? "+" : "") + momentum.momentum25m.toFixed(2) + "%" : "n/a"} 25m)`
+      : "5m:unavailable";
+
+    if (momentum?.trend === "bearish" && rsi > 22) {
+      direction = "put";
+      reason = `[PUT-SEEK] High-vol regime (${vixLabel}) + 5-min downward momentum confirmed — PUT is PRIMARY trade (${momLabel}, RSI:${rsi.toFixed(1)}, SL:${effectiveStopLoss}%)`;
+    } else {
       await logBot(
-        "warn",
-        `[CALL-BLOCKED] ${vixLabel} — CALL entry rejected (absolute VIX rule). SPY signal was bullish but VIX conditions override all entries.`,
-        "vol_filter",
+        "info",
+        `[PUT-WATCH] ${vixLabel} elevated — CALLs blocked, scanning for 5-min bearish setup to enter PUT. Current momentum: ${momLabel}${rsi <= 22 ? " — RSI oversold, skip entry" : ""}`,
+        "hold",
         "SPY",
       );
       return;
     }
+  } else if (trend === "bullish" && rsi < 78) {
+    // ── B) Normal regime — bullish daily signal ───────────────────────────
     direction = "call";
     if (isFearUnwinding && data.volumeCondition === "high") {
       reason = `SPY bullish + VIX fear unwinding on high volume (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — strong CALL signal`;
@@ -321,8 +337,9 @@ async function runOptionsCycle(
       reason = `SPY bullish (MA:${data.maCondition}, RSI:${rsi.toFixed(1)}) — buy CALL`;
     }
   } else if (trend === "bearish" && rsi > 22) {
+    // ── B) Normal regime — bearish daily signal ───────────────────────────
+    // Still require VIX rising confirmation outside of the high-vol regime
     if (!vixConfirmsPut) {
-      // SPY bearish but VIX not rising enough — no fear confirmation, skip PUT entry.
       await logBot(
         "info",
         `[HOLD] SPY bearish but ${vixLabel} not confirming — need VIX +${vixChangeThreshold}%+ to enter PUT (MA:${data.maCondition}, RSI:${rsi.toFixed(1)})`,

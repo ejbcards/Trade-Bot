@@ -41,6 +41,16 @@ export interface OptionsContract {
   volume: number;
 }
 
+function calculateEMA(values: number[], period: number): number | null {
+  if (values.length < period) return null;
+  const k = 2 / (period + 1);
+  let ema = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < values.length; i++) {
+    ema = values[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
 function calculateRSI(closes: number[], period = 14): number | null {
   if (closes.length < period + 1) return null;
   let gains = 0;
@@ -170,6 +180,102 @@ export async function fetchMarketData(symbol: string): Promise<MarketDataResult 
 }
 
 // ─── VIX (Volatility Index) ───────────────────────────────────────────────
+
+// ─── 5-Minute Intraday Momentum ──────────────────────────────────────────────
+//
+// Used during elevated-VIX regimes to confirm downward momentum before entering
+// a PUT. The daily trend can still be bullish while the 5-min chart rolls over —
+// this catches that intraday shift earlier than the daily signal does.
+//
+
+export interface IntradayMomentum {
+  trend: "bearish" | "bullish" | "neutral";
+  /** How many consecutive bearish 5-min bars at the tip of the chart */
+  consecutiveDown: number;
+  /** How many consecutive bullish 5-min bars at the tip of the chart */
+  consecutiveUp: number;
+  /** Price change % over the last 5 bars (~25 minutes) */
+  momentum25m: number | null;
+  /** Current price vs 8-bar EMA */
+  belowEma8: boolean;
+  barsAnalyzed: number;
+}
+
+export async function fetchIntraday5mMomentum(symbol: string): Promise<IntradayMomentum | null> {
+  try {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setHours(startDate.getHours() - 5); // last ~5 hours covers the full trading session
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: any = await (yahooFinance.chart as any)(symbol, {
+      period1: startDate,
+      period2: endDate,
+      interval: "5m",
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawQuotes: any[] = result?.quotes ?? [];
+    const bars = rawQuotes
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((q: any) => q.open != null && q.close != null && q.high != null && q.low != null)
+      .slice(-24); // last ~2 hours of 5-min bars
+
+    if (bars.length < 8) return null;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const closes = bars.map((b: any) => b.close as number);
+
+    const ema8 = calculateEMA(closes, 8);
+    const currentClose = closes[closes.length - 1];
+    const belowEma8 = ema8 !== null && currentClose < ema8;
+
+    // Price change over last 5 bars (~25 minutes)
+    const price5barsAgo = bars.length >= 5 ? closes[closes.length - 5] : null;
+    const momentum25m = price5barsAgo && price5barsAgo > 0
+      ? ((currentClose - price5barsAgo) / price5barsAgo) * 100
+      : null;
+
+    // Count consecutive bearish / bullish candles from the most recent bar back
+    let consecutiveDown = 0;
+    let consecutiveUp = 0;
+    for (let i = bars.length - 1; i >= 0; i--) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const bar = bars[i] as any;
+      if (bar.close < bar.open) {
+        if (consecutiveUp > 0) break;
+        consecutiveDown++;
+      } else if (bar.close > bar.open) {
+        if (consecutiveDown > 0) break;
+        consecutiveUp++;
+      } else {
+        break; // doji — stop counting
+      }
+    }
+
+    // Bearish: below 8-EMA AND (≥2 consecutive down bars OR price fell >0.1% in 25 min)
+    const isBearish = belowEma8 && (consecutiveDown >= 2 || (momentum25m !== null && momentum25m < -0.1));
+    // Bullish: above 8-EMA AND (≥2 consecutive up bars OR price rose >0.1% in 25 min)
+    const isBullish = !belowEma8 && ema8 !== null && (consecutiveUp >= 2 || (momentum25m !== null && momentum25m > 0.1));
+
+    logger.info(
+      { symbol, belowEma8, ema8: ema8?.toFixed(2), currentClose: currentClose.toFixed(2), consecutiveDown, consecutiveUp, momentum25m: momentum25m?.toFixed(3), barsAnalyzed: bars.length },
+      "5-min intraday momentum",
+    );
+
+    return {
+      trend: isBearish ? "bearish" : isBullish ? "bullish" : "neutral",
+      consecutiveDown,
+      consecutiveUp,
+      momentum25m,
+      belowEma8,
+      barsAnalyzed: bars.length,
+    };
+  } catch (err) {
+    logger.warn({ symbol, err }, "Failed to fetch 5-min intraday momentum");
+    return null;
+  }
+}
 
 export interface VixData {
   price: number;
