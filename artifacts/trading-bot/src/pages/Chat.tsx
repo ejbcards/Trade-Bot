@@ -697,6 +697,42 @@ export default function Chat() {
     scrollToBottom();
   }, [messages.length, streamingContent, activeId, scrollToBottom]);
 
+  const handleAutoGreet = useCallback(async (convId: number) => {
+    if (streaming) return;
+    setStreaming(true);
+    setStreamingContent("");
+    try {
+      const response = await fetch(`${BASE}/api/anthropic/conversations/${convId}/greeting`, {
+        method: "POST",
+      });
+      if (!response.ok || !response.body) return;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const msg = JSON.parse(line.slice(6)) as { type: string; text?: string };
+            if (msg.type === "delta" && msg.text) {
+              setStreamingContent((prev) => prev + msg.text);
+            } else if (msg.type === "done") {
+              qc.invalidateQueries({ queryKey: [`/api/anthropic/conversations/${convId}`] });
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ } finally {
+      setStreaming(false);
+      setStreamingContent("");
+    }
+  }, [streaming, qc]);
+
   const handleNewChat = () => {
     const title = `Chat ${new Date().toLocaleDateString("en-US", {
       month: "short",
@@ -704,7 +740,11 @@ export default function Chat() {
       hour: "numeric",
       minute: "2-digit",
     })}`;
-    createConvo.mutate({ data: { title } });
+    createConvo.mutate({ data: { title } }, {
+      onSuccess: (data) => {
+        if (currentRecap) void handleAutoGreet(data.id);
+      },
+    });
   };
 
   const handleSend = async () => {
@@ -886,6 +926,7 @@ export default function Chat() {
                         createConvo.mutate({ data: { title } }, { onSuccess: resolve });
                       });
                       setActiveId(convo.id);
+                      if (currentRecap) void handleAutoGreet(convo.id);
                       setInput(prompt);
                     }}
                   >
@@ -945,13 +986,13 @@ export default function Chat() {
                         </div>
                       ) : (
                         <>
+                          {currentRecap && <RecapCard recap={currentRecap} />}
                           {messages.map((m) => (
                             <MessageBubble key={m.id} msg={m} />
                           ))}
                           {tradeAlerts.map((a) => (
                             <TradeAlertCard key={a.id} alert={a} />
                           ))}
-                          {currentRecap && <RecapCard recap={currentRecap} />}
                           {streaming && streamingContent && (
                             <MessageBubble
                               msg={{

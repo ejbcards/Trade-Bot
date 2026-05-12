@@ -379,4 +379,90 @@ router.post(
   },
 );
 
+// POST /anthropic/conversations/:id/greeting — streams a Moose opening message when today's recap exists
+router.post(
+  "/anthropic/conversations/:id/greeting",
+  async (req, res): Promise<void> => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    // Only greet once (no existing messages yet)
+    const existingMsgs = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, id))
+      .limit(1);
+    if (existingMsgs.length > 0) {
+      res.status(204).end();
+      return;
+    }
+
+    // Only greet when today's recap exists
+    const [todayRecap] = await db
+      .select()
+      .from(dailyRecaps)
+      .where(eq(dailyRecaps.date, todayET()))
+      .limit(1);
+    if (!todayRecap) {
+      res.status(204).end();
+      return;
+    }
+
+    const systemPrompt = await buildSystemPrompt();
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    let fullResponse = "";
+
+    try {
+      const stream = anthropic.messages.stream({
+        model: "claude-sonnet-4-6",
+        max_tokens: 200,
+        system: systemPrompt,
+        messages: [
+          {
+            role: "user",
+            content:
+              "You just opened a new chat. Write a brief 1–2 sentence greeting that references the day's trading highlights from the recap above. Be warm and conversational — tease the headline and invite the user to dig in. No headers, no bullets, no repeating the full recap.",
+          },
+        ],
+      });
+
+      for await (const event of stream) {
+        if (
+          event.type === "content_block_delta" &&
+          event.delta.type === "text_delta"
+        ) {
+          fullResponse += event.delta.text;
+          res.write(
+            `data: ${JSON.stringify({ type: "delta", text: event.delta.text })}\n\n`,
+          );
+        }
+      }
+
+      await db.insert(messages).values({
+        conversationId: id,
+        role: "assistant",
+        content: fullResponse,
+      });
+
+      res.write(
+        `data: ${JSON.stringify({ type: "done", content: fullResponse })}\n\n`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unexpected error";
+      res.write(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`);
+    } finally {
+      res.end();
+    }
+  },
+);
+
 export default router;
