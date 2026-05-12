@@ -10,6 +10,7 @@ import {
   positionsTable,
   botStateTable,
   botLogsTable,
+  dailyRecaps,
 } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { startOfDay } from "date-fns";
@@ -19,6 +20,10 @@ const router: IRouter = Router();
 
 function parsePnl(v: string | null | undefined): number {
   return v ? parseFloat(v) : 0;
+}
+
+function todayET(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
 async function buildSystemPrompt(): Promise<string> {
@@ -34,6 +39,7 @@ async function buildSystemPrompt(): Promise<string> {
     recentLogs,
     spyData,
     vixData,
+    todayRecapRows,
   ] = await Promise.all([
     db.select().from(brokersTable).where(eq(brokersTable.isActive, true)),
     db.select().from(strategiesTable).where(eq(strategiesTable.isActive, true)),
@@ -64,7 +70,10 @@ async function buildSystemPrompt(): Promise<string> {
       .limit(15),
     fetchMarketData("SPY").catch(() => null),
     fetchVixData().catch(() => null),
+    db.select().from(dailyRecaps).where(eq(dailyRecaps.date, todayET())).limit(1),
   ]);
+
+  const todayRecap = todayRecapRows[0] ?? null;
 
   const state = botState[0];
   const totalAccountValue = brokers.reduce(
@@ -192,7 +201,8 @@ STRATEGIES: ${strategiesSummary}
 RECENT TRADES: ${recentTradesSummary}
 
 DECISION LOG (today):
-${decisionLogs || "No decisions logged yet today."}`;
+${decisionLogs || "No decisions logged yet today."}
+${todayRecap ? `\nDAY RECAP (generated ${new Date(todayRecap.generatedAt).toLocaleString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true })} ET):\n${todayRecap.content}` : "\nDAY RECAP: Not yet generated for today."}`;
 }
 
 router.get(
