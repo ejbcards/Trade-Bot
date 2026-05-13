@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, gte, desc, and, isNotNull } from "drizzle-orm";
 import { db, brokersTable, strategiesTable, tradesTable, positionsTable, botStateTable, activityTable } from "@workspace/db";
 import { GetRecentActivityQueryParams } from "@workspace/api-zod";
-import { startOfDay, subWeeks, subMonths } from "date-fns";
+import { startOfDay, subDays, subMonths } from "date-fns";
 
 const router: IRouter = Router();
 
@@ -20,7 +20,11 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
       and(isNotNull(tradesTable.closedAt), gte(tradesTable.closedAt, startOfDay(new Date())), eq(tradesTable.status, "closed"))
     ),
     db.select().from(tradesTable).where(
-      and(isNotNull(tradesTable.closedAt), gte(tradesTable.closedAt, subWeeks(new Date(), 1)), eq(tradesTable.status, "closed"))
+      and(isNotNull(tradesTable.closedAt), gte(tradesTable.closedAt, (() => {
+        const now = new Date();
+        const day = now.getDay();
+        return startOfDay(subDays(now, day === 0 ? 6 : day - 1));
+      })()), eq(tradesTable.status, "closed"))
     ),
     db.select().from(tradesTable).where(
       and(isNotNull(tradesTable.closedAt), gte(tradesTable.closedAt, subMonths(new Date(), 1)), eq(tradesTable.status, "closed"))

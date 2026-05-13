@@ -13,9 +13,13 @@ function getPeriodDates(period: string) {
     case "daily":
       startDate = startOfDay(now);
       break;
-    case "weekly":
-      startDate = subWeeks(now, 1);
+    case "weekly": {
+      // Start of the current calendar week — Monday 00:00 ET
+      const day = now.getDay(); // 0=Sun, 1=Mon … 6=Sat
+      const daysToMonday = day === 0 ? 6 : day - 1;
+      startDate = startOfDay(subDays(now, daysToMonday));
       break;
+    }
     case "monthly":
       startDate = subMonths(now, 1);
       break;
