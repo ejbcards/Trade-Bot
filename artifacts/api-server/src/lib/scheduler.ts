@@ -709,11 +709,45 @@ export function startScheduler() {
     const state = await getState();
     if (state?.isRunning) { logger.info("Bot already running at market open"); return; }
     logger.info("Market open — starting bot");
+
+    // Use the previously active strategy if still active, otherwise fall back to the first active one
+    const [activeStrategy] = await db
+      .select()
+      .from(strategiesTable)
+      .where(
+        state?.activeStrategyId
+          ? and(eq(strategiesTable.id, state.activeStrategyId), eq(strategiesTable.isActive, true))
+          : eq(strategiesTable.isActive, true),
+      )
+      .limit(1);
+
+    if (!activeStrategy) {
+      logger.warn("No active strategy found — bot auto-start skipped at 9:30 AM ET");
+      await logBot("warn", "No active strategy found — bot auto-start skipped. Create and activate a strategy to enable auto-trading.", "auto_start");
+      return;
+    }
+
     const paperBrokerId = await ensurePaperBroker();
-    const [updated] = await db.update(botStateTable).set({ isRunning: true, startedAt: new Date(), lastHeartbeat: new Date(), activeBrokerId: paperBrokerId }).returning();
+    const activeBrokerId = state?.activeBrokerId ?? paperBrokerId;
+
+    const [updated] = await db
+      .update(botStateTable)
+      .set({
+        isRunning: true,
+        startedAt: new Date(),
+        lastHeartbeat: new Date(),
+        activeBrokerId,
+        activeStrategyId: activeStrategy.id,
+      })
+      .returning();
+
     if (updated) {
-      await logBot("info", "Bot auto-started at market open (9:30 AM ET)", "auto_start");
-      await db.insert(activityTable).values({ type: "bot_started", title: "Bot Started — Market Open", description: "Trading bot automatically activated at 9:30 AM ET" });
+      await logBot("info", `Bot auto-started at market open (9:30 AM ET) — strategy: "${activeStrategy.name}"`, "auto_start");
+      await db.insert(activityTable).values({
+        type: "bot_started",
+        title: "Bot Started — Market Open",
+        description: `Trading bot automatically activated at 9:30 AM ET using strategy "${activeStrategy.name}"`,
+      });
       await refreshSchedule();
     }
   }, { timezone: ET_TZ });
