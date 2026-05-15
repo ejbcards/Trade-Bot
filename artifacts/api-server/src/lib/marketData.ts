@@ -194,6 +194,10 @@ export interface IntradayMomentum {
   consecutiveDown: number;
   /** How many consecutive bullish 5-min bars at the tip of the chart */
   consecutiveUp: number;
+  /** How many consecutive bars where each bar's HIGH > previous bar's HIGH */
+  consecutiveHigherHighs: number;
+  /** How many consecutive bars where each bar's LOW < previous bar's LOW */
+  consecutiveLowerLows: number;
   /** Price change % over the last 5 bars (~25 minutes) */
   momentum25m: number | null;
   /** Current price vs 8-bar EMA */
@@ -253,13 +257,35 @@ export async function fetchIntraday5mMomentum(symbol: string): Promise<IntradayM
       }
     }
 
+    // Count consecutive higher highs — each bar's HIGH strictly above the previous bar's HIGH
+    let consecutiveHigherHighs = 0;
+    for (let i = bars.length - 1; i >= 1; i--) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((bars[i] as any).high > (bars[i - 1] as any).high) {
+        consecutiveHigherHighs++;
+      } else {
+        break;
+      }
+    }
+
+    // Count consecutive lower lows — each bar's LOW strictly below the previous bar's LOW
+    let consecutiveLowerLows = 0;
+    for (let i = bars.length - 1; i >= 1; i--) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((bars[i] as any).low < (bars[i - 1] as any).low) {
+        consecutiveLowerLows++;
+      } else {
+        break;
+      }
+    }
+
     // Bearish: below 8-EMA AND (≥2 consecutive down bars OR price fell >0.1% in 25 min)
     const isBearish = belowEma8 && (consecutiveDown >= 2 || (momentum25m !== null && momentum25m < -0.1));
     // Bullish: above 8-EMA AND (≥2 consecutive up bars OR price rose >0.1% in 25 min)
     const isBullish = !belowEma8 && ema8 !== null && (consecutiveUp >= 2 || (momentum25m !== null && momentum25m > 0.1));
 
     logger.info(
-      { symbol, belowEma8, ema8: ema8?.toFixed(2), currentClose: currentClose.toFixed(2), consecutiveDown, consecutiveUp, momentum25m: momentum25m?.toFixed(3), barsAnalyzed: bars.length },
+      { symbol, belowEma8, ema8: ema8?.toFixed(2), currentClose: currentClose.toFixed(2), consecutiveDown, consecutiveUp, consecutiveHigherHighs, consecutiveLowerLows, momentum25m: momentum25m?.toFixed(3), barsAnalyzed: bars.length },
       "5-min intraday momentum",
     );
 
@@ -267,6 +293,8 @@ export async function fetchIntraday5mMomentum(symbol: string): Promise<IntradayM
       trend: isBearish ? "bearish" : isBullish ? "bullish" : "neutral",
       consecutiveDown,
       consecutiveUp,
+      consecutiveHigherHighs,
+      consecutiveLowerLows,
       momentum25m,
       belowEma8,
       barsAnalyzed: bars.length,

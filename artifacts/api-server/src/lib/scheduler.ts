@@ -99,8 +99,8 @@ async function runOptionsCycle(
   const [activeBroker] = await db.select().from(brokersTable).where(eq(brokersTable.id, brokerId));
   const isAlpaca = activeBroker?.brokerType === "alpaca" && !!activeBroker.apiKey && !!activeBroker.apiSecret;
 
-  // ── 1. Fetch live SPY data + VIX volatility filter ─────────────────────
-  const [data, vixData] = await Promise.all([fetchMarketData("SPY"), fetchVixData()]);
+  // ── 1. Fetch live SPY data + VIX volatility filter + 5-min momentum ────
+  const [data, vixData, momentum] = await Promise.all([fetchMarketData("SPY"), fetchVixData(), fetchIntraday5mMomentum("SPY")]);
   if (!data) {
     await logBot("warn", "[SKIP] SPY — could not fetch market data", "data_error", "SPY");
     return;
@@ -305,15 +305,14 @@ async function runOptionsCycle(
   let direction: "call" | "put" | null = null;
   let reason = "";
 
+  const momLabel = momentum
+    ? `5m:${momentum.trend}(↓${momentum.consecutiveDown}/↑${momentum.consecutiveUp} bars, HH:${momentum.consecutiveHigherHighs}/LL:${momentum.consecutiveLowerLows}, ${momentum.momentum25m !== null ? (momentum.momentum25m >= 0 ? "+" : "") + momentum.momentum25m.toFixed(2) + "%" : "n/a"} 25m)`
+    : "5m:unavailable";
+
   if (isHighVolatility) {
     // ── A) High-vol regime ────────────────────────────────────────────────
     // CALLs are unconditionally blocked. PUTs are the PRIMARY directional trade.
     // Confirm with 5-min intraday momentum before entering — don't chase a bounce.
-    const momentum = await fetchIntraday5mMomentum("SPY");
-    const momLabel = momentum
-      ? `5m:${momentum.trend}(↓${momentum.consecutiveDown}/↑${momentum.consecutiveUp} bars, ${momentum.momentum25m !== null ? (momentum.momentum25m >= 0 ? "+" : "") + momentum.momentum25m.toFixed(2) + "%" : "n/a"} 25m)`
-      : "5m:unavailable";
-
     if (momentum?.trend === "bearish" && rsi > 22) {
       direction = "put";
       reason = `[PUT-SEEK] High-vol regime (${vixLabel}) + 5-min downward momentum confirmed — PUT is PRIMARY trade (${momLabel}, RSI:${rsi.toFixed(1)}, SL:${effectiveStopLoss}%)`;
@@ -401,7 +400,37 @@ async function runOptionsCycle(
     }
   }
 
-  // ── 6. Open a new position if below the concurrent limit ────────────────
+  // ── 6. Confirm 5-min structure before entry ──────────────────────────────
+  //
+  //  CALL requires ≥ 2 consecutive higher highs on the 5-min chart.
+  //  PUT  requires ≥ 2 consecutive lower  lows  on the 5-min chart.
+  //  A single candle in the right direction is NOT confirmation.
+  //  If the 5-min data is unavailable, skip entry rather than trade blind.
+  //
+  if (!momentum) {
+    await logBot("warn", `[SKIP] 5-min data unavailable — cannot confirm structure for ${direction?.toUpperCase()} entry`, "hold", "SPY");
+    return;
+  }
+  if (direction === "call" && momentum.consecutiveHigherHighs < 2) {
+    await logBot(
+      "info",
+      `[WAIT] CALL signal confirmed but 5-min structure unconfirmed — only ${momentum.consecutiveHigherHighs} consecutive higher high(s); need ≥ 2 (${momLabel})`,
+      "hold",
+      "SPY",
+    );
+    return;
+  }
+  if (direction === "put" && momentum.consecutiveLowerLows < 2) {
+    await logBot(
+      "info",
+      `[WAIT] PUT signal confirmed but 5-min structure unconfirmed — only ${momentum.consecutiveLowerLows} consecutive lower low(s); need ≥ 2 (${momLabel})`,
+      "hold",
+      "SPY",
+    );
+    return;
+  }
+
+  // ── 7. Open a new position if below the concurrent limit ─────────────────
   if (!chain) {
     await logBot("warn", "Could not fetch SPY options chain — skipping entry", "data_error", "SPY");
     return;
