@@ -6,8 +6,8 @@ import { strategiesTable } from "./strategies";
 
 export const tradesTable = pgTable("trades", {
   id: serial("id").primaryKey(),
-  brokerId: integer("broker_id").notNull().references(() => brokersTable.id),
-  strategyId: integer("strategy_id").references(() => strategiesTable.id),
+  brokerId: integer("broker_id").notNull().references(() => brokersTable.id, { onDelete: "cascade" }),
+  strategyId: integer("strategy_id").references(() => strategiesTable.id, { onDelete: "set null" }),
   symbol: text("symbol").notNull(),
   assetType: text("asset_type").notNull().default("stocks"),
   side: text("side").notNull(),

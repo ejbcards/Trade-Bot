@@ -103,12 +103,17 @@ router.delete("/brokers/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const [broker] = await db.delete(brokersTable).where(eq(brokersTable.id, params.data.id)).returning();
-  if (!broker) {
-    res.status(404).json({ error: "Broker not found" });
-    return;
+  try {
+    const [broker] = await db.delete(brokersTable).where(eq(brokersTable.id, params.data.id)).returning();
+    if (!broker) {
+      res.status(404).json({ error: "Broker not found" });
+      return;
+    }
+    res.sendStatus(204);
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete broker");
+    res.status(500).json({ error: "Failed to delete broker. It may still be referenced by active trades." });
   }
-  res.sendStatus(204);
 });
 
 router.post("/brokers/:id/test", async (req, res): Promise<void> => {
