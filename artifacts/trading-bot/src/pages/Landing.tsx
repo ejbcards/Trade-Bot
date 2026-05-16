@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@clerk/react";
 import {
@@ -9,18 +10,51 @@ import {
   ArrowRight,
   Crown,
   CheckCircle2,
-  Play,
   Bot,
   LineChart,
   Wallet,
+  Eye,
+  LayoutDashboard,
+  MessageCircle,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import logoUrl from "/logo.png";
+import previewDashboard from "/preview-dashboard.jpg";
+import previewStrategies from "/preview-strategies.jpg";
+import previewChat from "/preview-chat.jpg";
 
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-const YOUTUBE_EMBED_URL = "";
+const slides = [
+  {
+    id: "dashboard",
+    label: "Command Center",
+    icon: LayoutDashboard,
+    image: previewDashboard,
+    title: "Your Trading Command Center",
+    description:
+      "See your full portfolio at a glance — account value, daily P&L, open positions, and a live activity feed showing every move the bot makes in real time.",
+  },
+  {
+    id: "rules",
+    label: "Custom Rules",
+    icon: SlidersHorizontal,
+    image: previewStrategies,
+    title: "Build Your Own Strategy",
+    description:
+      "Define your own buy/sell decision rules, set stop-loss and take-profit guardrails, configure RSI exits, and tune volatility filters — all without writing a single line of code.",
+  },
+  {
+    id: "chat",
+    label: "Talk to Moose",
+    icon: MessageCircle,
+    image: previewChat,
+    title: "Ask the Moose Anything",
+    description:
+      "Get instant answers about your portfolio, positions, and bot activity. The Moose has live market data and knows exactly what the bot is seeing right now.",
+  },
+];
 
 const features = [
   {
@@ -97,22 +131,38 @@ const goldenMoosePerks = [
 export default function Landing() {
   const [, setLocation] = useLocation();
   const { isSignedIn } = useUser();
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      goToSlide((activeSlide + 1) % slides.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [activeSlide]);
+
+  function goToSlide(index: number) {
+    if (index === activeSlide) return;
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setActiveSlide(index);
+      setIsTransitioning(false);
+    }, 200);
+  }
 
   function handleGetStarted() {
-    if (isSignedIn) {
-      setLocation("/dashboard");
-    } else {
-      setLocation("/sign-up");
-    }
+    setLocation(isSignedIn ? "/dashboard" : "/sign-up");
   }
 
   function handleSignIn() {
     setLocation("/sign-in");
   }
 
-  function handleGoToDashboard() {
+  function handleSneakPeak() {
     setLocation("/dashboard");
   }
+
+  const slide = slides[activeSlide];
 
   return (
     <div className="dark min-h-screen bg-background text-foreground">
@@ -129,7 +179,7 @@ export default function Landing() {
           <div className="flex items-center gap-3">
             {isSignedIn ? (
               <Button
-                onClick={handleGoToDashboard}
+                onClick={handleGetStarted}
                 className="gap-2"
                 style={{ backgroundColor: "hsl(43 55% 52%)", color: "hsl(0 0% 8%)" }}
               >
@@ -137,7 +187,11 @@ export default function Landing() {
               </Button>
             ) : (
               <>
-                <Button variant="ghost" onClick={handleSignIn} className="text-muted-foreground hover:text-foreground">
+                <Button
+                  variant="ghost"
+                  onClick={handleSignIn}
+                  className="text-muted-foreground hover:text-foreground"
+                >
                   Sign In
                 </Button>
                 <Button
@@ -176,7 +230,7 @@ export default function Landing() {
           of the way.
         </p>
 
-        <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+        <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Button
             size="lg"
             onClick={handleGetStarted}
@@ -197,6 +251,16 @@ export default function Landing() {
               Sign In
             </Button>
           )}
+          <Button
+            size="lg"
+            variant="ghost"
+            onClick={handleSneakPeak}
+            className="gap-2 px-8 text-base"
+            style={{ color: "hsl(43 55% 52%)" }}
+          >
+            <Eye className="h-5 w-5" />
+            Sneak Peek of the Moose
+          </Button>
         </div>
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
@@ -212,40 +276,137 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Video */}
-      <section className="mx-auto max-w-4xl px-6 pb-24">
+      {/* App Showcase */}
+      <section className="mx-auto max-w-5xl px-6 pb-24">
+        <div className="mb-4 text-center">
+          <h2 className="text-2xl font-bold">See It in Action</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            A real look at how GoldenMoose works — dashboard, strategy builder, and AI chat
+          </p>
+        </div>
+
+        {/* Tab controls */}
+        <div className="mb-4 flex justify-center gap-2">
+          {slides.map((s, i) => (
+            <button
+              key={s.id}
+              onClick={() => goToSlide(i)}
+              className={cn(
+                "flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all",
+                activeSlide === i
+                  ? "border-[hsl(43_55%_52%)] text-[hsl(43_55%_52%)] bg-[hsl(43_55%_52%/0.1)]"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-[hsl(43_40%_32%)]"
+              )}
+            >
+              <s.icon className="h-4 w-4" />
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Screenshot frame */}
         <div
-          className="relative overflow-hidden rounded-2xl border"
-          style={{ borderColor: "hsl(43 40% 32%)", backgroundColor: "hsl(0 0% 14%)" }}
+          className="overflow-hidden rounded-2xl border shadow-2xl"
+          style={{ borderColor: "hsl(43 40% 32%)" }}
         >
-          {YOUTUBE_EMBED_URL ? (
-            <div className="aspect-video w-full">
-              <iframe
-                src={YOUTUBE_EMBED_URL}
-                title="GoldenMoose walkthrough"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="h-full w-full"
-              />
-            </div>
-          ) : (
-            <div className="flex aspect-video w-full flex-col items-center justify-center gap-4">
+          <div
+            className="relative"
+            style={{ backgroundColor: "hsl(0 0% 10%)" }}
+          >
+            {/* Browser chrome bar */}
+            <div
+              className="flex items-center gap-2 px-4 py-2.5 border-b"
+              style={{ borderColor: "hsl(43 40% 32% / 0.4)", backgroundColor: "hsl(0 0% 12%)" }}
+            >
+              <div className="flex gap-1.5">
+                <div className="h-3 w-3 rounded-full bg-red-500/60" />
+                <div className="h-3 w-3 rounded-full bg-yellow-500/60" />
+                <div className="h-3 w-3 rounded-full bg-green-500/60" />
+              </div>
               <div
-                className="flex h-16 w-16 items-center justify-center rounded-full"
-                style={{ backgroundColor: "hsl(43 55% 52% / 0.15)", border: "2px solid hsl(43 55% 52%)" }}
+                className="mx-auto flex items-center gap-1.5 rounded px-3 py-0.5 text-xs text-muted-foreground"
+                style={{ backgroundColor: "hsl(0 0% 18%)" }}
               >
-                <Play className="h-7 w-7 translate-x-0.5" style={{ color: "hsl(43 55% 52%)" }} />
-              </div>
-              <div className="text-center">
-                <p className="font-semibold text-foreground">See GoldenMoose in Action</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Watch how the bot connects, configures, and trades automatically
-                </p>
+                <span style={{ color: "hsl(43 55% 52%)" }}>🔒</span>
+                golden-moose.replit.app
               </div>
             </div>
-          )}
+
+            {/* Screenshot */}
+            <div className="relative aspect-[16/9] overflow-hidden">
+              <img
+                src={slide.image}
+                alt={slide.label}
+                className={cn(
+                  "h-full w-full object-cover object-top transition-opacity duration-200",
+                  isTransitioning ? "opacity-0" : "opacity-100"
+                )}
+              />
+              {/* Progress bar */}
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black/40">
+                <div
+                  key={activeSlide}
+                  className="h-full"
+                  style={{
+                    backgroundColor: "hsl(43 55% 52%)",
+                    animation: "progress 5s linear forwards",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Caption */}
+          <div
+            className={cn(
+              "px-6 py-4 transition-opacity duration-200",
+              isTransitioning ? "opacity-0" : "opacity-100"
+            )}
+            style={{ backgroundColor: "hsl(0 0% 11%)" }}
+          >
+            <p className="font-semibold text-foreground">{slide.title}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{slide.description}</p>
+          </div>
+        </div>
+
+        {/* Dot indicators */}
+        <div className="mt-4 flex justify-center gap-2">
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => goToSlide(i)}
+              className={cn(
+                "h-1.5 rounded-full transition-all",
+                activeSlide === i
+                  ? "w-6 bg-[hsl(43_55%_52%)]"
+                  : "w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/60"
+              )}
+            />
+          ))}
+        </div>
+
+        {/* CTA below showcase */}
+        <div className="mt-6 text-center">
+          <Button
+            onClick={handleSneakPeak}
+            variant="outline"
+            className="gap-2"
+            style={{ borderColor: "hsl(43 40% 32%)", color: "hsl(43 55% 52%)" }}
+          >
+            <Eye className="h-4 w-4" />
+            Explore the full dashboard yourself
+            <ArrowRight className="h-4 w-4" />
+          </Button>
         </div>
       </section>
+
+      {/* Progress bar keyframes */}
+      <style>{`
+        @keyframes progress {
+          from { width: 0% }
+          to { width: 100% }
+        }
+      `}</style>
 
       {/* How it works */}
       <section
@@ -414,15 +575,27 @@ export default function Landing() {
           Join traders using GoldenMoose to run AI-driven strategies 24/7 — no manual trading,
           no second-guessing, no missed signals.
         </p>
-        <Button
-          size="lg"
-          className="mt-8 gap-2 px-10 text-base font-semibold"
-          onClick={handleGetStarted}
-          style={{ backgroundColor: "hsl(43 55% 52%)", color: "hsl(0 0% 8%)" }}
-        >
-          {isSignedIn ? "Open Dashboard" : "Create Your Free Account"}
-          <ArrowRight className="h-5 w-5" />
-        </Button>
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <Button
+            size="lg"
+            className="gap-2 px-10 text-base font-semibold"
+            onClick={handleGetStarted}
+            style={{ backgroundColor: "hsl(43 55% 52%)", color: "hsl(0 0% 8%)" }}
+          >
+            {isSignedIn ? "Open Dashboard" : "Create Your Free Account"}
+            <ArrowRight className="h-5 w-5" />
+          </Button>
+          <Button
+            size="lg"
+            variant="ghost"
+            onClick={handleSneakPeak}
+            className="gap-2 px-8 text-base"
+            style={{ color: "hsl(43 55% 52%)" }}
+          >
+            <Eye className="h-5 w-5" />
+            Sneak Peek of the Moose
+          </Button>
+        </div>
       </section>
 
       {/* Footer */}
@@ -430,7 +603,10 @@ export default function Landing() {
         className="border-t px-6 py-8 text-center text-sm text-muted-foreground"
         style={{ borderColor: "hsl(43 40% 32% / 0.3)" }}
       >
-        <div className="flex items-center justify-center gap-2 font-semibold" style={{ color: "hsl(43 55% 52%)" }}>
+        <div
+          className="flex items-center justify-center gap-2 font-semibold"
+          style={{ color: "hsl(43 55% 52%)" }}
+        >
           <img src={logoUrl} alt="GoldenMoose" className="h-5 w-5 object-contain" />
           GoldenMoose
         </div>
