@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://golden-moose.replit.app/sitemap.xml
