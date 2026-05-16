@@ -7,7 +7,7 @@ export const strategiesTable = pgTable("strategies", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
-  brokerId: integer("broker_id").notNull().references(() => brokersTable.id),
+  brokerId: integer("broker_id").references(() => brokersTable.id, { onDelete: "set null" }),
   assetType: text("asset_type").notNull().default("stocks"),
   symbols: json("symbols").$type<string[]>().notNull().default([]),
   isActive: boolean("is_active").notNull().default(true),
