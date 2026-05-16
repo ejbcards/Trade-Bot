@@ -77,22 +77,29 @@ onlyBuiltDependencies:
 overrides:
   # ── Security fixes ────────────────────────────────────────────────────────
   # path-to-regexp: DoS via sequential optional groups / multiple wildcards
-  path-to-regexp: ">=8.4.0"
+  # GHSA-j3q9-mxjg-w52f, GHSA-27v5-c462-wpq7 — fixed in 8.4.0
+  path-to-regexp: "^8.4.0"
   # fast-uri: path traversal + host confusion via percent-encoded segments
-  fast-uri: ">=3.1.2"
-  # picomatch 2.x: ReDoS via extglob quantifiers + method injection (via micromatch)
-  "micromatch>picomatch": ">=2.3.2"
-  # picomatch 4.x: ReDoS via extglob quantifiers + method injection (via fdir and vite)
-  "fdir>picomatch": ">=4.0.4"
-  "vite>picomatch": ">=4.0.4"
+  # GHSA-q3j6-qgpj-74h6, GHSA-v39h-62p7-jpjc — fixed in 3.1.2
+  fast-uri: "^3.1.2"
+  # picomatch 2.x: ReDoS via extglob quantifiers + method injection
+  # GHSA-c2c7-rcm5-vvqj, GHSA-3v7f-55p6-f55p — fixed in 2.3.2
+  "micromatch>picomatch": "^2.3.2"
+  # picomatch 4.x: same CVEs — fixed in 4.0.4
+  "fdir>picomatch": "^4.0.4"
+  "vite>picomatch": "^4.0.4"
   # lodash: prototype pollution + code injection via template
-  lodash: ">=4.18.0"
+  # GHSA-r5fr-rjxr-66jc, GHSA-f23m-r3pf-42rh — fixed in 4.18.0
+  lodash: "^4.18.0"
   # yaml: stack overflow via deeply nested collections
-  yaml: ">=2.8.3"
+  # GHSA-48c2-rrv3-qjmp — fixed in 2.8.3
+  yaml: "^2.8.3"
   # brace-expansion: zero-step sequence causes process hang
-  brace-expansion: ">=2.0.3"
+  # GHSA-f886-m6hf-6m8v — fixed in 2.0.3
+  brace-expansion: "^2.0.3"
   # postcss: XSS via unescaped </style> in CSS stringify output
-  postcss: ">=8.5.10"
+  # GHSA-qx2v-qp2m-jg93 — fixed in 8.5.10
+  postcss: "^8.5.10"
   # ── Platform-specific binary exclusions (replit uses linux-x64 only) ─────
   # replit uses linux-x64 only, we can exclude all other platforms
   "esbuild>@esbuild/darwin-arm64": "-"
