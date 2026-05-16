@@ -9,3 +9,4 @@ export * from "./decision_rules";
 export * from "./conversations";
 export * from "./messages";
 export * from "./daily_recaps";
+export * from "./user_access";

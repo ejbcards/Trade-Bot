@@ -13,10 +13,12 @@ import anthropicRouter from "./anthropic";
 import recapRouter from "./recap";
 import botContextRouter from "./botContext";
 import notificationsRouter from "./notifications";
+import userRouter from "./user";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(userRouter);
 router.use(brokersRouter);
 router.use(strategiesRouter);
 router.use(decisionRulesRouter);

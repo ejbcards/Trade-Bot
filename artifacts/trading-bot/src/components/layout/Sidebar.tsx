@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Wallet, PieChart, ActivitySquare, BarChart2, BrainCircuit, MessageCircle } from "lucide-react";
+import { LayoutDashboard, Wallet, PieChart, ActivitySquare, BarChart2, BrainCircuit, MessageCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logoUrl from "/logo.png";
 import { useBotNotificationsContext } from "@/context/BotNotificationsContext";
@@ -13,6 +13,7 @@ const navItems = [
   { name: "Trades", href: "/trades", icon: ActivitySquare },
   { name: "Reports", href: "/reports", icon: BarChart2 },
   { name: "Talk to Moose", href: "/chat", icon: MessageCircle },
+  { name: "Create Your Own Account", href: "/account", icon: Sparkles, sub: true },
 ];
 
 function alertDotColor(type: string): "green" | "red" | null {
@@ -42,14 +43,16 @@ export function Sidebar() {
         {navItems.map((item) => {
           const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
           const isChat = item.href === "/chat";
+          const isSub = "sub" in item && item.sub;
           const showTradeDot = isChat && dotColor !== null && !onChat;
 
           return (
             <Link key={item.href} href={item.href}>
               <div
-                data-testid={`nav-${item.name.toLowerCase()}`}
+                data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-md transition-colors cursor-pointer group font-medium text-sm",
+                  isSub && "ml-4 pl-3 border-l border-sidebar-foreground/10",
                   isActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
@@ -58,7 +61,7 @@ export function Sidebar() {
                 <div className="relative">
                   <item.icon
                     className={cn(
-                      "w-5 h-5",
+                      isSub ? "w-4 h-4" : "w-5 h-5",
                       isActive ? "text-primary" : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80"
                     )}
                   />

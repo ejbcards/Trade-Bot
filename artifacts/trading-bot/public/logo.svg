@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <circle cx="32" cy="32" r="30" fill="hsl(0 0% 14%)" stroke="hsl(43 55% 52%)" stroke-width="2"/>
+  <!-- Moose antlers left -->
+  <path d="M14 12 C12 8, 8 6, 6 4 M14 12 C13 8, 10 5, 10 2 M14 12 C16 8, 18 7, 20 6" stroke="hsl(43 55% 52%)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <!-- Moose antlers right -->
+  <path d="M50 12 C52 8, 56 6, 58 4 M50 12 C51 8, 54 5, 54 2 M50 12 C48 8, 46 7, 44 6" stroke="hsl(43 55% 52%)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <!-- Moose head -->
+  <ellipse cx="32" cy="26" rx="14" ry="12" fill="hsl(43 55% 52%)"/>
+  <!-- Moose snout -->
+  <ellipse cx="32" cy="36" rx="8" ry="6" fill="hsl(43 45% 44%)"/>
+  <!-- Moose eyes -->
+  <circle cx="27" cy="24" r="2" fill="hsl(0 0% 8%)"/>
+  <circle cx="37" cy="24" r="2" fill="hsl(0 0% 8%)"/>
+  <!-- Nostrils -->
+  <circle cx="29.5" cy="37" r="1.2" fill="hsl(0 0% 8%)"/>
+  <circle cx="34.5" cy="37" r="1.2" fill="hsl(0 0% 8%)"/>
+  <!-- Body -->
+  <ellipse cx="32" cy="50" rx="12" ry="8" fill="hsl(43 55% 52%)"/>
+  <!-- Legs -->
+  <line x1="24" y1="56" x2="22" y2="63" stroke="hsl(43 55% 52%)" stroke-width="3" stroke-linecap="round"/>
+  <line x1="29" y1="57" x2="27" y2="63" stroke="hsl(43 55% 52%)" stroke-width="3" stroke-linecap="round"/>
+  <line x1="35" y1="57" x2="37" y2="63" stroke="hsl(43 55% 52%)" stroke-width="3" stroke-linecap="round"/>
+  <line x1="40" y1="56" x2="42" y2="63" stroke="hsl(43 55% 52%)" stroke-width="3" stroke-linecap="round"/>
+</svg>

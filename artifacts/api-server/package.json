@@ -10,6 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.16",
+    "@clerk/shared": "^4.11.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "@workspace/integrations-anthropic-ai": "workspace:*",
@@ -18,6 +20,7 @@
     "date-fns": "^3.6.0",
     "drizzle-orm": "catalog:",
     "express": "^5",
+    "http-proxy-middleware": "^4.0.0",
     "node-cron": "^4.2.1",
     "pino": "^9",
     "pino-http": "^10",

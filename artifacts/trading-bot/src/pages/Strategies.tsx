@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useUser } from "@clerk/react";
+import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useListStrategies, useCreateStrategy, useDeleteStrategy, useUpdateStrategy, useListBrokers } from "@workspace/api-client-react";
 import { DecisionTableEditor } from "@/components/DecisionTableEditor";
@@ -7,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatPercent } from "@/lib/format";
-import { BrainCircuit, Settings2, Plus, AlertTriangle, Trash2, ShieldAlert } from "lucide-react";
+import { BrainCircuit, Settings2, Plus, AlertTriangle, Trash2, ShieldAlert, Crown, Lock, Key, ArrowRight } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -255,6 +258,89 @@ function StrategyForm({
   );
 }
 
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+async function fetchUserAccess(): Promise<{ hasAccess: boolean; grantType: string | null }> {
+  const res = await fetch(`${basePath}/api/user/access`);
+  if (!res.ok) throw new Error("Not authenticated");
+  return res.json() as Promise<{ hasAccess: boolean; grantType: string | null }>;
+}
+
+function GoldenMooseCard() {
+  const { isSignedIn } = useUser();
+  const [, setLocation] = useLocation();
+
+  const { data: accessData } = useQuery({
+    queryKey: ["user-access"],
+    queryFn: fetchUserAccess,
+    enabled: isSignedIn === true,
+    retry: false,
+  });
+
+  const hasAccess = isSignedIn && (accessData?.hasAccess ?? false);
+
+  return (
+    <Card className="border-primary/40 bg-gradient-to-br from-card to-primary/5 mb-2">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 w-9 h-9 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center shrink-0">
+              <Crown className="w-4.5 h-4.5 text-primary" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-bold text-foreground">Golden Moose Strategy</h3>
+                <Badge className="bg-primary/15 text-primary border-primary/30 text-[10px]">
+                  Premium
+                </Badge>
+                {hasAccess ? (
+                  <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 text-[10px]">
+                    Unlocked
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-[10px]">
+                    <Lock className="w-2.5 h-2.5 mr-1" />
+                    Locked
+                  </Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Our flagship AI strategy — Claude-powered signals, auto risk management, multi-broker execution.
+              </p>
+            </div>
+          </div>
+          {!hasAccess && (
+            <Button
+              size="sm"
+              className="shrink-0 gap-1.5"
+              onClick={() => setLocation("/account")}
+            >
+              {isSignedIn ? (
+                <>
+                  <Key className="w-3.5 h-3.5" />
+                  Unlock
+                </>
+              ) : (
+                <>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  Sign In
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+        {!hasAccess && (
+          <p className="text-xs text-muted-foreground mt-3 pl-12">
+            {isSignedIn
+              ? "Subscribe for $10/month or enter an access key in your account settings."
+              : "Create a free account to subscribe or enter an access key."}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Strategies() {
   const queryClient = useQueryClient();
   const { data: strategies, isLoading } = useListStrategies();
@@ -429,6 +515,8 @@ export default function Strategies() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <GoldenMooseCard />
 
         {isLoading ? (
           <div className="grid gap-4 md:grid-cols-2">

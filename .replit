@@ -45,3 +45,8 @@ externalPort = 3001
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+GOLDEN_MOOSE_ACCESS_KEYS = "GOLDMOOSE2025,MOOSE-VIP-001"
