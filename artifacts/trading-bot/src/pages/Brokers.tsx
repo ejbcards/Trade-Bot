@@ -6,7 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +55,7 @@ export default function Brokers() {
     isActive: true,
     alpacaPaper: true,
   });
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [schwabConnecting, setSchwabConnecting] = useState<number | null>(null);
   const [schwabStatus, setSchwabStatus] = useState<Record<number, { hasRefreshToken: boolean }>>({});
 
@@ -104,7 +106,13 @@ export default function Brokers() {
   };
 
   const handleDelete = (id: number) => {
-    if (!confirm("Are you sure you want to remove this broker connection?")) return;
+    setDeleteConfirmId(id);
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteConfirmId == null) return;
+    const id = deleteConfirmId;
+    setDeleteConfirmId(null);
     deleteBroker.mutate(
       { id },
       {
@@ -473,6 +481,26 @@ export default function Brokers() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={deleteConfirmId != null} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove broker connection?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the broker and all associated trades and positions. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleConfirmDelete}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
