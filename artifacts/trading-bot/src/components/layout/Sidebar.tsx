@@ -33,10 +33,12 @@ export function Sidebar() {
   return (
     <aside className="w-64 border-r bg-sidebar flex flex-col h-full flex-shrink-0">
       <div className="h-16 flex items-center px-6 border-b">
-        <div className="flex items-center gap-2 font-bold text-xl tracking-tight" style={{ color: "hsl(43 55% 52%)" }}>
-          <img src={logoUrl} alt="GoldenMoose" className="w-8 h-8 object-contain" />
-          <span>GoldenMoose</span>
-        </div>
+        <Link href="/">
+          <div className="flex items-center gap-2 font-bold text-xl tracking-tight cursor-pointer hover:opacity-80 transition-opacity" style={{ color: "hsl(43 55% 52%)" }}>
+            <img src={logoUrl} alt="GoldenMoose" className="w-8 h-8 object-contain" />
+            <span>GoldenMoose</span>
+          </div>
+        </Link>
       </div>
 
       <nav className="flex-1 overflow-y-auto p-4 space-y-1">
