@@ -10,6 +10,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BotNotificationsProvider } from "@/context/BotNotificationsContext";
 import NotFound from "@/pages/not-found";
 
+import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
 import Brokers from "@/pages/Brokers";
 import Strategies from "@/pages/Strategies";
@@ -139,7 +140,8 @@ function Router() {
   return (
     <div className="dark min-h-screen bg-background text-foreground">
       <Switch>
-        <Route path="/" component={Dashboard} />
+        <Route path="/" component={Landing} />
+        <Route path="/dashboard" component={Dashboard} />
         <Route path="/brokers" component={Brokers} />
         <Route path="/strategies" component={Strategies} />
         <Route path="/positions" component={Positions} />

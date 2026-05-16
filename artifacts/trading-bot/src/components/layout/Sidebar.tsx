@@ -6,7 +6,7 @@ import { useBotNotificationsContext } from "@/context/BotNotificationsContext";
 import { BookOpen } from "lucide-react";
 
 const navItems = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Brokers", href: "/brokers", icon: Wallet },
   { name: "Strategies", href: "/strategies", icon: BrainCircuit },
   { name: "Positions", href: "/positions", icon: PieChart },
@@ -41,7 +41,7 @@ export function Sidebar() {
 
       <nav className="flex-1 overflow-y-auto p-4 space-y-1">
         {navItems.map((item) => {
-          const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+          const isActive = location === item.href || location.startsWith(item.href + "/");
           const isChat = item.href === "/chat";
           const isSub = "sub" in item && item.sub;
           const showTradeDot = isChat && dotColor !== null && !onChat;
